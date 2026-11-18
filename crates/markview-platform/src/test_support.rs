@@ -3,6 +3,8 @@ use std::{ffi::OsString, fs, io, path::Path};
 
 mod rename;
 pub use rename::rename_directory;
+mod clipboard;
+pub use clipboard::ExternalClipboard;
 
 /// Whether a subprocess can isolate Linux font discovery with Fontconfig.
 pub const fn isolated_fontconfig() -> bool {

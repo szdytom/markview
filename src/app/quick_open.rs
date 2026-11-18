@@ -95,6 +95,7 @@ impl<P: SendEvent> App<P> {
 		if !self.interaction.overlays.quick_open.open() {
 			return;
 		}
+		self.cancel_gestures();
 		self.clear_input_focus();
 		let picker = &mut self.interaction.overlays.quick_open;
 		picker.open = false;
@@ -142,6 +143,11 @@ impl<P: SendEvent> App<P> {
 				.is_composing()
 		{
 			return false;
+		}
+		if self.interaction.widgets.focus.is_none()
+			&& self.focused_preview_key(key)
+		{
+			return true;
 		}
 		match key {
 			Key::Named(NamedKey::Escape) => self.close_quick_open(),
@@ -231,6 +237,10 @@ impl<P: SendEvent> App<P> {
 			.preview
 			.is_some_and(|rect| rect.contains(x, y))
 		{
+			self.preview_input(markview_interaction::ViewInput::Scroll {
+				point: markview_interaction::Point::new(x, y),
+				request,
+			});
 			return;
 		}
 		self.quick_open_list();

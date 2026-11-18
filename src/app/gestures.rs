@@ -36,6 +36,7 @@ enum Tap {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Surface {
+	QuickOpen,
 	None,
 	Document,
 	Overflow(usize, usize),
@@ -119,6 +120,20 @@ impl<P: super::SendEvent> App<P> {
 		}
 		if let Some(field) = self.input_at_cursor() {
 			return Some(Tap::Input(field));
+		}
+		if let Some(doc) =
+			self.input_document().filter(|doc| doc.rect.contains(x, y))
+		{
+			let view = doc.view();
+			let point = markview_interaction::Point::new(x, y);
+			return Some(
+				view.link(point)
+					.map(Tap::Link)
+					.or_else(|| {
+						view.image(point).map(|(src, _)| Tap::Image(src))
+					})
+					.unwrap_or(Tap::ClearSelection),
+			);
 		}
 		if self.interaction.overlays.quick_open.open() {
 			return self.quick_open_tap();
@@ -206,54 +221,87 @@ impl<P: super::SendEvent> App<P> {
 			})
 	}
 
+	/// The first surface that owns the cursor wins; `Some(Surface::None)` stops
+	/// the chain because an overlay there must swallow the gesture.
 	fn touch_surface(&mut self) -> Surface {
 		if self.interaction.overlays.viewer_open() {
 			return Surface::Viewer;
 		}
-		if self.interaction.overlays.modal_open()
-			|| self.interaction.overlays.quick_open.open()
-		{
+		if self.interaction.overlays.modal_open() {
 			return Surface::None;
+		}
+		let (x, y) = self.interaction.pointer.cursor();
+		if let Some(surface) = self.floating_surface(x, y) {
+			return surface;
+		}
+		if let Some(surface) = self.overlay_surface(x, y) {
+			return surface;
+		}
+		if let Some(surface) = self.chrome_surface(x, y) {
+			return surface;
+		}
+		self.document_surface(x, y)
+	}
+
+	fn floating_surface(&mut self, x: f32, y: f32) -> Option<Surface> {
+		let doc = self
+			.input_document()
+			.filter(|doc| doc.rect.contains(x, y))?;
+		let view = doc.view();
+		let local = view.local(markview_interaction::Point::new(x, y));
+		Some(Surface::Floating(
+			doc.snapshot.presentation_key,
+			view.context.overflow_at(local),
+		))
+	}
+
+	fn overlay_surface(&mut self, x: f32, y: f32) -> Option<Surface> {
+		if self.interaction.overlays.quick_open.open() {
+			let preview = self
+				.quick_open_geometry()
+				.preview
+				.is_some_and(|rect| rect.contains(x, y));
+			return Some(if preview {
+				Surface::None
+			} else {
+				Surface::QuickOpen
+			});
 		}
 		// The open list owns the gesture too: nothing behind it pans, so the
 		// row its list hangs from cannot move out from under it.
 		if self.interaction.overlays.dropdown_open() {
-			return Surface::None;
+			return Some(Surface::None);
 		}
 		if self.interaction.panel_open() {
-			return if self.pointer_in_panel() {
+			return Some(if self.pointer_in_panel() {
 				Surface::Panel
 			} else {
 				Surface::None
-			};
+			});
 		}
+		None
+	}
+
+	fn chrome_surface(&mut self, x: f32, y: f32) -> Option<Surface> {
 		if self.pointer_in_folder() {
-			return Surface::Folder;
+			return Some(Surface::Folder);
 		}
 		if self.pointer_in_outline() {
-			return Surface::Outline;
+			return Some(Surface::Outline);
 		}
-		let (x, y) = self.interaction.pointer.cursor();
 		if self.tab_layout().viewport.contains(x, y) {
-			return Surface::Tabs;
+			return Some(Surface::Tabs);
 		}
-		if let Some(floating) =
-			self.preview.floating().filter(|f| f.rect.contains(x, y))
-		{
-			let view = floating.view();
-			return Surface::Floating(
-				floating.snapshot.presentation_key,
-				view.context.overflow_at(
-					view.local(markview_interaction::Point::new(x, y)),
-				),
-			);
-		}
+		None
+	}
+
+	fn document_surface(&self, x: f32, y: f32) -> Surface {
 		let geometry = self.view_geometry();
 		if !geometry.clip().contains(x, y) {
 			return Surface::None;
 		}
 		let (dx, dy) = geometry.document_point(x, y);
-		for (bi, block) in self
+		for (index, block) in self
 			.readers
 			.session
 			.display
@@ -262,12 +310,12 @@ impl<P: super::SendEvent> App<P> {
 			.iter()
 			.enumerate()
 		{
-			for oi in 0..block.layout.overflow.len() {
+			for overflow in 0..block.layout.overflow.len() {
 				if block
-					.overflow_rect(oi)
+					.overflow_rect(overflow)
 					.is_some_and(|rect| rect.contains(dx, dy - block.y))
 				{
-					return Surface::Overflow(bi, oi);
+					return Surface::Overflow(index, overflow);
 				}
 			}
 		}
@@ -333,6 +381,9 @@ impl<P: super::SendEvent> App<P> {
 	/// Stops the eased scroll of the surface a touch just captured.
 	fn cancel_control_scroll(&mut self, surface: Surface) {
 		match surface {
+			Surface::QuickOpen => {
+				self.interaction.overlays.quick_open.cancel_scroll()
+			}
 			Surface::Panel => self.cancel_panel_scroll(),
 			Surface::Folder => self.folder.scroll.cancel(),
 			Surface::Outline => {
@@ -342,8 +393,7 @@ impl<P: super::SendEvent> App<P> {
 			Surface::Document => self.folder.start.scroll.cancel(),
 			Surface::Floating(key, _) => {
 				if let Some(floating) = self
-					.preview
-					.floating_mut()
+					.input_document()
 					.filter(|f| f.snapshot.presentation_key == key)
 				{
 					floating.scroll.cancel();
@@ -456,9 +506,26 @@ impl<P: super::SendEvent> App<P> {
 		}
 	}
 
+	#[cfg_attr(
+		any(),
+		markview::allow_complexity(
+			reason = "Keep the flat Tap-to-effect dispatch beside the floating-preview special case; every variant's target must stay visible in one place."
+		)
+	)]
 	fn activate_tap(&mut self, capture: Capture) -> Option<TouchAction> {
 		self.interaction.widgets.captured = None;
 		if capture.tap != self.touch_tap() {
+			return None;
+		}
+		if let Surface::Floating(key, _) = capture.surface {
+			if capture.tap.is_some()
+				&& self
+					.input_document()
+					.is_some_and(|doc| doc.snapshot.presentation_key == key)
+			{
+				self.pointer_pressed();
+				self.pointer_released();
+			}
 			return None;
 		}
 		match capture.tap {
@@ -634,6 +701,12 @@ impl<P: super::SendEvent> App<P> {
 				*surface
 			})
 			.unwrap();
+		let speed = if matches!(surface, Surface::QuickOpen) {
+			1.0
+		} else {
+			self.scroll_speed()
+		};
+		let (dx, dy) = (dx * speed, dy * speed);
 		self.gestures.coasting = false;
 		let shift = self.interaction.pointer.modifiers().shift_key();
 		let step = self
@@ -727,8 +800,7 @@ impl<P: super::SendEvent> App<P> {
 		match surface {
 			Surface::None | Surface::Viewer => (0.0, 0.0),
 			Surface::Floating(key, overflow) => self
-				.preview
-				.floating()
+				.input_document()
 				.filter(|f| f.snapshot.presentation_key == key)
 				.map_or((0.0, 0.0), |f| {
 					(
@@ -764,6 +836,9 @@ impl<P: super::SendEvent> App<P> {
 				(0.0, self.interaction.overlays.outline.scroll_offset())
 			}
 			Surface::Folder => (0.0, self.folder.scroll.offset()),
+			Surface::QuickOpen => {
+				(0.0, self.interaction.overlays.quick_open.scroll())
+			}
 			Surface::Panel => (
 				0.0,
 				self.panel_scroll_range().map_or(0.0, |(scroll, _)| scroll),
@@ -772,16 +847,25 @@ impl<P: super::SendEvent> App<P> {
 	}
 
 	fn pan_gesture(&mut self, surface: Surface, (dx, dy): Point) {
+		if matches!(surface, Surface::Floating(..)) && dy != 0.0 {
+			self.interaction.overlays.quick_open.preview.follow_end = false;
+		}
 		match surface {
 			Surface::None | Surface::Viewer => {}
 			Surface::Floating(key, overflow) => {
 				if let Some(floating) = self
-					.preview
-					.floating_mut()
+					.input_document()
 					.filter(|f| f.snapshot.presentation_key == key)
 				{
 					floating.pan(overflow, -dx, -dy);
 				}
+			}
+			Surface::QuickOpen => {
+				let list = self.quick_open_list();
+				self.interaction.overlays.quick_open.set_scroll(
+					(list.scroll - dy).clamp(0.0, list.max_scroll()),
+				);
+				self.interaction.widgets.captured = None;
 			}
 			Surface::Panel => self.scroll_panel(-dy),
 			Surface::Outline => self.scroll_outline(-dy),

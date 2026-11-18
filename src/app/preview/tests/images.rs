@@ -338,6 +338,7 @@ fn an_overflow_gesture_cannot_reuse_a_block_removed_by_image_reflow() {
 		app.preview.floating().unwrap().horizontal[&(block_index, 0)] > 0.0
 	);
 	app.preview.accept(work::Completion {
+		partial: false,
 		picture: false,
 		serial: app.preview.serial,
 		snapshot: Some(after),

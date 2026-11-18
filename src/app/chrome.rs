@@ -949,23 +949,7 @@ impl<'a> Chrome<'a> {
 		}
 		if let Some(floating) = preview.floating.as_ref() {
 			out.extend(preview::surface(self.ui, floating.rect));
-			if let Some(bar) = floating.scrollbar() {
-				let (track, thumb) = bar.bars();
-				out.push(Draw::Rect(
-					track,
-					crate::layout::Paint::Styled(
-						markview_layout::style::Condition::Scrollbar,
-						markview_layout::style::ColorField::Track,
-					),
-				));
-				out.push(Draw::Rect(
-					thumb,
-					crate::layout::Paint::Styled(
-						markview_layout::style::Condition::Scrollbar,
-						markview_layout::style::ColorField::Thumb,
-					),
-				));
-			}
+			floating.draw_scrollbar(out);
 			return Some(floating.body());
 		}
 		let anchor = self.preview_anchor(preview.target)?;

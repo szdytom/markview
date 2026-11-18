@@ -4,27 +4,60 @@ use markview_interaction::{Point, ViewAction, ViewInput};
 use winit::keyboard::{Key, NamedKey};
 
 impl<P: super::super::SendEvent> App<P> {
+	pub(in crate::app) fn input_document(
+		&mut self,
+	) -> Option<&mut crate::app::document_view::FloatingDocument> {
+		self.preview_document_for_input(false)
+	}
+	fn preview_document_for_input(
+		&mut self,
+		keyboard: bool,
+	) -> Option<&mut crate::app::document_view::FloatingDocument> {
+		if self.interaction.overlays.quick_open.open() {
+			if !self.frame.focused
+				|| self.interaction.overlays.modal_open()
+				|| self.interaction.overlays.viewer_open()
+				|| self.interaction.widgets.captured.is_some()
+				|| self.interaction.pointer.scrollbar().is_some()
+			{
+				return None;
+			}
+			let preview = &mut self.interaction.overlays.quick_open.preview;
+			return if keyboard && preview.reflow.is_some() {
+				preview.reflow.as_mut()
+			} else {
+				preview.document.as_mut()
+			};
+		}
+		if self.preview_allowed() {
+			self.preview.floating_mut()
+		} else {
+			None
+		}
+	}
 	pub(in crate::app) fn refresh_preview_hover(
 		&mut self,
 	) -> Option<winit::cursor::CursorIcon> {
-		if !self.preview_allowed() {
-			return None;
-		}
 		let (x, y) = self.interaction.pointer.cursor();
-		let floating = self.preview.floating_mut()?;
+		let floating = self.input_document()?;
 		if !floating.rect.contains(x, y) && !floating.state.captured() {
+			if floating.state.hover != Default::default() {
+				floating.state.hover = Default::default();
+				self.redraw();
+			}
 			return None;
 		}
 		let hover = floating
 			.view()
 			.hover(Point::new(x, y), floating.state.captured());
-		let changed = hover != floating.state.hover
+		let cursor = hover.cursor;
+		let hover_changed = hover != floating.state.hover;
+		floating.state.hover = hover;
+		let changed = hover_changed
 			|| self.interaction.pointer.hover().is_some()
 			|| self.interaction.pointer.hover_image().is_some()
 			|| self.interaction.pointer.hover_control().is_some()
 			|| self.interaction.widgets.hovered.is_some();
-		let cursor = hover.cursor;
-		floating.state.hover = hover;
 		self.interaction.pointer.clear_hover();
 		self.interaction.widgets.hovered = None;
 		if changed {
@@ -39,23 +72,18 @@ impl<P: super::super::SendEvent> App<P> {
 	}
 
 	pub(in crate::app) fn preview_captured(&self) -> bool {
-		self.preview
-			.floating()
-			.is_some_and(|floating| floating.state.captured())
+		let picker = &self.interaction.overlays.quick_open;
+		let doc = if picker.open() {
+			picker.preview.document.as_ref()
+		} else {
+			self.preview.floating()
+		};
+		doc.is_some_and(|doc| doc.state.captured())
 	}
 	pub(in crate::app) fn preview_input(&mut self, input: ViewInput) -> bool {
-		if !self.preview_allowed() {
-			return false;
-		}
-		let point = match input {
-			ViewInput::Move(p)
-			| ViewInput::Release(p)
-			| ViewInput::Press { point: p, .. }
-			| ViewInput::Scroll { point: p, .. } => Some(p),
-			_ => None,
-		};
-
-		let Some(floating) = self.preview.floating() else {
+		let picker = self.interaction.overlays.quick_open.open();
+		let point = Self::preview_point(&input);
+		let Some(floating) = self.input_document() else {
 			return false;
 		};
 		if point.is_some_and(|point| !floating.rect.contains(point.x, point.y))
@@ -65,16 +93,15 @@ impl<P: super::super::SendEvent> App<P> {
 		}
 		let pressed = matches!(input, ViewInput::Press { .. });
 		if pressed {
-			self.cancel_gestures();
-			self.readers.session.cancel_scroll_animation();
-			self.interaction.pointer.reset_wheel();
-			self.abandon_dm();
-			self.preview.floating_mut().unwrap().scroll.cancel();
+			self.cancel_preview_press(picker);
 		}
-		if self.defer_file_preview_input(&input) {
+		if self.picker_input(&input, pressed) {
 			return true;
 		}
-		let floating = self.preview.floating_mut().unwrap();
+		if !picker && self.defer_file_preview_input(&input) {
+			return true;
+		}
+		let floating = self.input_document().unwrap();
 		let update = floating.input(input);
 		if pressed {
 			floating.state.focused = true;
@@ -90,6 +117,51 @@ impl<P: super::super::SendEvent> App<P> {
 		}
 		self.redraw();
 		true
+	}
+
+	fn preview_point(input: &ViewInput) -> Option<Point> {
+		match input {
+			ViewInput::Move(p)
+			| ViewInput::Release(p)
+			| ViewInput::Press { point: p, .. }
+			| ViewInput::Scroll { point: p, .. } => Some(*p),
+			_ => None,
+		}
+	}
+
+	/// Abandons every gesture and scroll a press on the preview interrupts.
+	fn cancel_preview_press(&mut self, picker: bool) {
+		if let Some(floating) = self.input_document() {
+			floating.scroll.cancel();
+		}
+		self.cancel_gestures();
+		self.readers.session.cancel_scroll_animation();
+		self.interaction.pointer.reset_wheel();
+		self.abandon_dm();
+		if picker {
+			let preview = &mut self.interaction.overlays.quick_open.preview;
+			preview.select_all_pending = false;
+			self.clear_input_focus();
+		}
+	}
+
+	/// Keeps the picker's preview request and scroll follow in step with the
+	/// input. Returns whether the picker consumed the input.
+	fn picker_input(&mut self, input: &ViewInput, pressed: bool) -> bool {
+		if !self.interaction.overlays.quick_open.open() {
+			return false;
+		}
+		if matches!(input, ViewInput::Press { .. } | ViewInput::Release(_)) {
+			self.interaction.overlays.quick_open.preview.check_file();
+			self.refresh_quick_open_preview();
+			if self.input_document().is_none() {
+				return true;
+			}
+		}
+		if pressed || matches!(input, ViewInput::Scroll { .. }) {
+			self.interaction.overlays.quick_open.preview.follow_end = false;
+		}
+		false
 	}
 
 	fn defer_file_preview_input(&mut self, input: &ViewInput) -> bool {
@@ -108,23 +180,12 @@ impl<P: super::super::SendEvent> App<P> {
 					.is_some_and(|pending| !pending.presented))
 	}
 
-	pub(in crate::app) fn preview_horizontal_by(&mut self, delta: f32) -> bool {
-		let point = self.interaction.pointer.cursor();
-		let Some(floating) = self.preview.floating_mut() else {
-			return false;
-		};
-		if !floating.rect.contains(point.0, point.1) {
-			return false;
-		}
-		floating.horizontal_by(Point::new(point.0, point.1), delta);
-		self.redraw();
-		true
-	}
-
 	fn preview_action(&mut self, action: ViewAction) {
+		let file = self.interaction.overlays.quick_open.open()
+			|| self.preview.open().is_some_and(|open| open.path.is_some());
 		match action {
 			ViewAction::Link(target) => {
-				if self.preview.open().is_some_and(|open| open.path.is_some()) {
+				if file {
 					self.activate_file_preview(target);
 				} else {
 					self.dismiss_preview();
@@ -132,7 +193,7 @@ impl<P: super::super::SendEvent> App<P> {
 				}
 			}
 			ViewAction::Image { source, rect } => {
-				if self.preview.open().is_some_and(|open| open.path.is_some()) {
+				if file {
 					self.activate_file_preview_image(&source, rect);
 				} else {
 					self.dismiss_preview();
@@ -153,7 +214,7 @@ impl<P: super::super::SendEvent> App<P> {
 		&mut self,
 		seconds: f32,
 	) -> bool {
-		let Some(floating) = self.preview.floating_mut() else {
+		let Some(floating) = self.input_document() else {
 			return false;
 		};
 		floating.advance_selection(seconds)
@@ -165,11 +226,20 @@ impl<P: super::super::SendEvent> App<P> {
 		};
 		match character.to_lowercase().as_str() {
 			"c" => {
-				self.copy_selection();
+				let preview = &mut self.interaction.overlays.quick_open.preview;
+				if preview.select_all_pending {
+					preview.defer_copy(self.clipboard.stamp());
+				} else {
+					self.copy_selection();
+				}
 				true
 			}
 			"a" => {
-				self.preview_input(ViewInput::SelectAll);
+				self.interaction.overlays.quick_open.preview.select_all();
+				if let Some(doc) = self.preview_document_for_input(true) {
+					doc.input(ViewInput::SelectAll);
+				}
+				self.redraw();
 				true
 			}
 			_ => false,
@@ -187,10 +257,13 @@ impl<P: super::super::SendEvent> App<P> {
 			self.redraw();
 			return true;
 		}
+		self.focused_preview_key(key)
+	}
+
+	pub(in crate::app) fn focused_preview_key(&mut self, key: &Key) -> bool {
 		if !self
-			.preview
-			.floating()
-			.is_some_and(|floating| floating.state.focused)
+			.preview_document_for_input(true)
+			.is_some_and(|doc| doc.focused())
 		{
 			return false;
 		}
@@ -199,7 +272,7 @@ impl<P: super::super::SendEvent> App<P> {
 			return self.preview_command(key);
 		}
 		let clock = self.animations.scrolls.clone();
-		let Some(floating) = self.preview.floating_mut() else {
+		let Some(floating) = self.preview_document_for_input(true) else {
 			return false;
 		};
 		let body = floating.body();
@@ -218,6 +291,9 @@ impl<P: super::super::SendEvent> App<P> {
 			point: Point::new(body.x + 1.0, body.y + 1.0),
 			request,
 		});
+		let preview = &mut self.interaction.overlays.quick_open.preview;
+		preview.follow_end =
+			preview.pending && matches!(key, Key::Named(NamedKey::End));
 		self.redraw();
 		true
 	}

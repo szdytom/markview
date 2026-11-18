@@ -223,3 +223,47 @@ fn native_touch_and_trackpad_route_through_reader_and_chrome() {
 	assert!(!app.gestures.coasting);
 	assert!(app.gestures.gesture.contacts.is_empty());
 }
+
+#[derive(Clone)]
+struct StubProxy;
+impl crate::app::SendEvent for StubProxy {
+	fn try_send(&self, _event: crate::app::Event) -> bool {
+		true
+	}
+}
+
+/// A reader without a window server; the surface chain only reads its state.
+fn headless_app() -> App<StubProxy> {
+	App::new(
+		crate::cli::LaunchOptions {
+			mode: crate::cli::Mode::Smoke,
+			width: 800,
+			height: 600,
+			options: crate::test_support::options(),
+			..Default::default()
+		},
+		StubProxy,
+	)
+}
+
+fn surface_at(app: &mut App<StubProxy>, point: Point) -> Surface {
+	app.interaction.pointer.move_to(point);
+	app.touch_surface()
+}
+
+#[test]
+fn an_open_panel_owns_the_gesture_inside_and_beside_its_rect() {
+	let mut app = headless_app();
+	let clip = app.view_geometry().clip();
+	let page = (clip.x + clip.w / 2.0, clip.y + clip.h / 2.0);
+	assert_eq!(surface_at(&mut app, page), Surface::Document);
+	app.show_panel(PanelPage::Settings(crate::state::PanelTab::Generic));
+	let panel = crate::app::chrome::components::panel_rect(800.0, 600.0);
+	let inside = (panel.x + panel.w / 2.0, panel.y + panel.h / 2.0);
+	assert_eq!(surface_at(&mut app, inside), Surface::Panel);
+	assert_eq!(
+		surface_at(&mut app, ((panel.x - 10.0).max(0.0), inside.1)),
+		Surface::None,
+		"a point beside the panel blocks the page instead of panning it"
+	);
+}

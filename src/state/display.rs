@@ -5,6 +5,24 @@ use crate::{
 };
 use std::collections::{HashMap, HashSet};
 
+pub(crate) fn clamp_horizontal_offsets(
+	snapshot: &LayoutSnapshot,
+	offsets: &mut HashMap<(usize, usize), f32>,
+) {
+	offsets.retain(|&(block, index), offset| {
+		let Some(overflow) = snapshot
+			.blocks
+			.get(block)
+			.and_then(|block| block.layout.overflow.get(index))
+		else {
+			return false;
+		};
+		*offset = offset
+			.clamp(0.0, (overflow.content_width - overflow.rect.w).max(0.0));
+		true
+	});
+}
+
 #[derive(Default, Clone)]
 pub(crate) struct DisplayState {
 	pub(crate) snapshot: LayoutSnapshot,

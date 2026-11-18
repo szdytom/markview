@@ -740,6 +740,14 @@ impl<P: super::SendEvent> App<P> {
 		dy: f32,
 		mode: markview_interaction::WheelMode,
 	) {
+		if self.interaction.overlays.quick_open.open() {
+			self.wheel_quick_open(self.animations.scrolls.wheel(
+				dy,
+				Instant::now(),
+				mode,
+			));
+			return;
+		}
 		if self.preview.scroll(
 			self.interaction.pointer.cursor(),
 			self.animations.scrolls.wheel(dy, Instant::now(), mode),
@@ -1301,19 +1309,21 @@ impl<P: super::SendEvent> App<P> {
 	/// Pans the wide block under the pointer. `false` means no block was
 	/// there, so the caller can scroll the page instead of dropping the event.
 	pub(super) fn horizontal_by(&mut self, dx: f32) -> bool {
-		if self.preview_horizontal_by(dx) {
-			return true;
-		}
-		let consumed = markview_interaction::horizontal_by(
-			&self.readers.session.display.snapshot,
-			self.view_geometry(),
-			&mut self.readers.session.display.horizontal,
-			markview_interaction::Point::new(
-				self.interaction.pointer.cursor().0,
-				self.interaction.pointer.cursor().1,
-			),
-			dx,
-		);
+		let (x, y) = self.interaction.pointer.cursor();
+		let point = markview_interaction::Point::new(x, y);
+		let consumed = if let Some(doc) =
+			self.input_document().filter(|doc| doc.rect.contains(x, y))
+		{
+			doc.horizontal_by(point, dx)
+		} else {
+			markview_interaction::horizontal_by(
+				&self.readers.session.display.snapshot,
+				self.view_geometry(),
+				&mut self.readers.session.display.horizontal,
+				point,
+				dx,
+			)
+		};
 		if consumed {
 			self.refresh_hover();
 			self.redraw();

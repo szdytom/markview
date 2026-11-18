@@ -102,6 +102,12 @@ struct Scene {
 impl Scene {
 	fn new(source: Content, cancelled: &CancellationToken) -> Option<Self> {
 		let document = if let Some(path) = &source.destination.path {
+			if !source.fit
+				&& !crate::app::folder::markdown(path)
+				&& !crate::file::is_picture(path)
+			{
+				return None;
+			}
 			let text = crate::file::read_markdown(path).ok()?;
 			if cancelled.is_cancelled() {
 				return None;
@@ -133,6 +139,7 @@ impl Scene {
 	fn layout(
 		&self,
 		cancelled: &(dyn Fn() -> bool + Sync),
+		mut progress: impl FnMut(&LayoutSnapshot),
 	) -> Option<(LayoutSnapshot, navigation::Origins)> {
 		let source = &self.source;
 		let document = self.document.document();
@@ -165,22 +172,27 @@ impl Scene {
 				cancelled,
 			)?
 		} else {
-			crate::layout::LayoutEngine::new().layout_prefix_cancellable(
+			crate::layout::LayoutEngine::new().layout_progressive_cancellable(
 				document,
 				&source.options,
 				images,
-				source.options.viewport_height,
+				|snapshot| {
+					progress(snapshot);
+					true
+				},
 				cancelled,
 			)?
 		};
+		#[cfg(test)]
+		tests::LAYOUT_BLOCKS
+			.set(tests::LAYOUT_BLOCKS.get() + snapshot.blocks.len());
 		source
 			.destination
 			.path
 			.as_ref()
 			.is_none_or(|path| crate::watch::file_stamp(path) == source.stamp)
 			.then(|| {
-				let origins = if source.fit && source.destination.path.is_some()
-				{
+				let origins = if source.destination.path.is_some() {
 					navigation::Origins::new(document, &snapshot)
 				} else {
 					navigation::Origins::default()
@@ -194,8 +206,9 @@ impl Scene {
 		services: crate::services::Handle,
 		wake: markview_layout::background::Wake,
 		cancelled: &CancellationToken,
+		progress: impl FnMut(&LayoutSnapshot),
 	) -> Option<(LayoutSnapshot, navigation::Origins)> {
-		let snapshot = self.layout(&|| cancelled.is_cancelled())?;
+		let snapshot = self.layout(&|| cancelled.is_cancelled(), progress)?;
 		let Some(path) = &self.source.destination.path else {
 			return Some(snapshot);
 		};
@@ -236,14 +249,20 @@ impl Scene {
 			&self.source.options.stylesheet,
 			&self.source.options.fonts,
 		);
-		self.layout(&|| cancelled.is_cancelled())
+		if images.snapshot.entries.is_empty()
+			&& snapshot.0.images.entries.is_empty()
+		{
+			return Some(snapshot);
+		}
+		self.layout(&|| cancelled.is_cancelled(), |_| {})
 	}
 }
 
 pub(in crate::app) struct Completion {
 	pub serial: u64,
+	pub partial: bool,
 	pub snapshot: Option<LayoutSnapshot>,
-	pub(super) origins: navigation::Origins,
+	pub(in crate::app) origins: navigation::Origins,
 	pub build: Duration,
 	pub picture: bool,
 }
@@ -286,12 +305,28 @@ impl Worker {
 			.unwrap();
 		slot.take()
 	}
+	#[cfg(test)]
+	pub(in crate::app) fn wait_for_final_publication(&self) {
+		let slot = self.ready.0.lock().unwrap();
+		let (slot, _) = self
+			.ready
+			.1
+			.wait_timeout_while(slot, Duration::from_secs(10), |slot| {
+				slot.as_ref().is_none_or(|result| result.partial)
+			})
+			.unwrap();
+		assert!(
+			slot.as_ref().is_some_and(
+				|result| !result.partial && result.snapshot.is_some()
+			)
+		);
+	}
 	pub(super) fn submit(
 		&mut self,
 		services: &crate::services::Handle,
 		serial: u64,
 		source: Arc<Source>,
-		wake: impl Fn() + Send + 'static,
+		wake: impl Fn() + Clone + Send + 'static,
 	) {
 		self.submit_content(
 			services,
@@ -315,7 +350,7 @@ impl Worker {
 		services: &crate::services::Handle,
 		serial: u64,
 		source: Content,
-		wake: impl Fn() + Send + 'static,
+		wake: impl Fn() + Clone + Send + 'static,
 	) {
 		self.cancel();
 		let cancel = services.cancel.child_token();
@@ -337,14 +372,44 @@ impl Worker {
 			let stopped = cancel.clone();
 			let io = handle.clone();
 			let first_wake = image_wake.clone();
+			let early = ready.clone();
+			let early_wake = wake.clone();
 			let initial = handle
 				.compute(std::mem::size_of::<Source>(), &cancel, move || {
 					let start = Instant::now();
 					let Some(mut scene) = Scene::new(source, &stopped) else {
 						return Ok(None);
 					};
+					let document = scene.document.clone();
+					let height = scene.source.options.viewport_height;
+					let mut next = 1;
+					let progress = |page: &LayoutSnapshot| {
+						if page.height < height || page.blocks.len() < next {
+							return;
+						}
+						next = page.blocks.len().saturating_mul(2);
+						let result = Completion {
+							serial,
+							partial: true,
+							snapshot: Some(page.clone()),
+							origins: navigation::Origins::new(
+								document.document(),
+								page,
+							),
+							build: start.elapsed(),
+							picture: false,
+						};
+						let mut slot = early.0.lock().unwrap();
+						if stopped.is_cancelled() {
+							return;
+						}
+						*slot = Some(result);
+						drop(slot);
+						early.1.notify_one();
+						early_wake();
+					};
 					let Some(snapshot) =
-						scene.refresh(io, first_wake, &stopped)
+						scene.refresh(io, first_wake, &stopped, progress)
 					else {
 						return Ok(None);
 					};
@@ -368,6 +433,7 @@ impl Worker {
 					}
 					*slot = Some(Completion {
 						serial,
+						partial: false,
 						snapshot: Some(snapshot.0),
 						origins: snapshot.1,
 						build,
@@ -383,6 +449,7 @@ impl Worker {
 					}
 					*slot = Some(Completion {
 						serial,
+						partial: false,
 						snapshot: None,
 						origins: navigation::Origins::default(),
 						build,
@@ -419,7 +486,14 @@ impl Worker {
 							.as_mut()
 							.unwrap()
 							.poll()
-							.then(|| current.refresh(io, image_wake, &stopped))
+							.then(|| {
+								current.refresh(
+									io,
+									image_wake,
+									&stopped,
+									|_| {},
+								)
+							})
 							.flatten();
 						Ok((current, snapshot, start.elapsed()))
 					})

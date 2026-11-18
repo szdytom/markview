@@ -38,7 +38,7 @@ at the same level, without `[brackets]`.
 ### Changed
 
 - Use one native macOS open panel and ⌘O for files and folders, with a single start-page action; remove the separate ⇧⌘O shortcut.
-- Redesign Ctrl+P with search, file results and keyboard hints in a left column beside a larger formatted Markdown preview, falling back to a single column in narrow windows.
+- Redesign Ctrl+P with search, file results and keyboard hints in a left column beside a scrollable preview with selectable, copyable Markdown text and image support, falling back to a single column in narrow windows.
 - Raise the minimum supported Rust version to 1.100.0.
 - Reduce text layout allocations, retained geometry memory, and document reflow time.
 - Reduce retained memory for Markdown source maps by deferring reverse indexes and sealing storage.

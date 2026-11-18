@@ -10,6 +10,7 @@
 //! resolution. Idle tabs share a bounded three-screen cache with tab restoration.
 mod folder;
 mod input;
+pub(super) use navigation::Origins;
 mod navigation;
 mod observe;
 pub(crate) use navigation::PendingAction;
@@ -724,24 +725,7 @@ impl Preview {
 		let open = self.open()?;
 		let rect = self.body()?;
 		if let Some(floating) = open.floating.as_ref() {
-			return Some(crate::render::Preview {
-				interaction: Some(crate::render::SceneInteraction {
-					held_overflow: floating.state.held_overflow(),
-					selection: floating.state.selection,
-					revision: floating.revision.get(),
-					hovered_link: floating
-						.state
-						.hover
-						.link
-						.as_ref()
-						.map(|link| link.link_ref()),
-				}),
-				snapshot: &floating.snapshot,
-				scroll: floating.scroll.offset(),
-				rect,
-				theme,
-				horizontal: &floating.horizontal,
-			});
+			return Some(floating.scene(rect, theme));
 		}
 		let Target::Tab(tab) = open.target else {
 			return None;

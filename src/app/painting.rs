@@ -103,25 +103,13 @@ impl<P: super::SendEvent> App<P> {
 			),
 		};
 		let settings_kind = self.settings_kind();
-		let quick_open_body = self
-			.interaction
-			.overlays
-			.quick_open
-			.open()
-			.then(|| self.quick_open_geometry().body)
-			.flatten();
-		let preview = self
-			.preview
-			.scene(&self.readers, self.preferences.values.theme)
-			.or_else(|| {
-				quick_open_body.and_then(|body| {
-					self.interaction
-						.overlays
-						.quick_open
-						.preview
-						.scene(body, self.preferences.values.theme)
-				})
-			});
+		let picker = &self.interaction.overlays.quick_open;
+		let theme = self.preferences.values.theme;
+		let preview = if picker.open() {
+			picker.preview.scene(theme)
+		} else {
+			self.preview.scene(&self.readers, theme)
+		};
 		let Some(renderer) = &mut self.renderer else {
 			return Ok(());
 		};

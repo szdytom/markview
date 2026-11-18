@@ -6,16 +6,17 @@ use markview_layout::{
 };
 use std::sync::Arc;
 
-pub(super) fn fit(snapshot: &mut LayoutSnapshot, bounds: Rect) -> bool {
+pub(super) fn fit(
+	snapshot: &mut LayoutSnapshot,
+	max_width: f32,
+	max_height: f32,
+) -> bool {
 	let source = ImageSource::Resource(ResourceRef::document(
 		crate::file::STANDALONE_IMAGE_SOURCE,
 	));
 	let Some(key) = snapshot.images.key(&source) else {
 		return false;
 	};
-	let margin = 8.0_f32.min(bounds.w / 2.0).min(bounds.h / 2.0);
-	let max_width = 420.0_f32.min((bounds.w - 2.0 * margin).max(1.0));
-	let max_height = 320.0_f32.min((bounds.h - 2.0 * margin).max(1.0));
 	let info = &snapshot.images.entries[key];
 	let Some((width, height)) =
 		info.size.filter(|_| !info.loading && info.error.is_none())

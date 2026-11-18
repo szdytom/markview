@@ -18,7 +18,7 @@ enum Location {
 }
 
 #[derive(Default)]
-pub(super) struct Origins {
+pub(in crate::app) struct Origins {
 	inline: HashMap<LinkOccurrenceId, Location>,
 	disclosures: HashMap<BlockId, Vec<usize>>,
 }
@@ -41,6 +41,9 @@ impl Origins {
 			}
 		}
 		for (root, block) in document.blocks().iter().enumerate() {
+			if wanted.is_empty() {
+				break;
+			}
 			markview_document::visit_fields(
 				block,
 				&mut Vec::new(),
@@ -50,7 +53,7 @@ impl Origins {
 						for (occurrence, id) in
 							inline_link_origins(text).into_iter().enumerate()
 						{
-							if wanted.contains(&id) {
+							if wanted.remove(&id) {
 								origins.inline.entry(id).or_insert(
 									Location::Inline {
 										root,
@@ -145,11 +148,24 @@ enum Activation {
 }
 
 impl<P: super::super::SendEvent> App<P> {
+	fn file_preview_document(
+		&self,
+	) -> (&crate::app::document_view::FloatingDocument, &Origins) {
+		let picker = &self.interaction.overlays.quick_open;
+		if picker.open() {
+			(
+				picker.preview.document.as_ref().unwrap(),
+				&picker.preview.origins,
+			)
+		} else {
+			let open = self.preview.open().unwrap();
+			(open.floating.as_ref().unwrap(), &open.origins)
+		}
+	}
 	pub(super) fn activate_file_preview(&mut self, target: LinkTarget) {
-		let open = self.preview.open().unwrap();
-		let floating = open.floating.as_ref().unwrap();
+		let (floating, origins) = self.file_preview_document();
 		let link = floating.state.hover.link.as_ref().unwrap().id;
-		let location = open.origins.location(link, &target);
+		let location = origins.location(link, &target);
 		let expanded = if let LinkTarget::Disclosure(id) = target {
 			floating
 				.snapshot
@@ -172,7 +188,7 @@ impl<P: super::super::SendEvent> App<P> {
 		alias: &str,
 		rect: Rect,
 	) {
-		let images = &self.preview.floating().unwrap().snapshot.images;
+		let images = &self.file_preview_document().0.snapshot.images;
 		let source = images
 			.keys
 			.iter()
@@ -183,18 +199,23 @@ impl<P: super::super::SendEvent> App<P> {
 	}
 
 	fn activate_file_preview_action(&mut self, action: Activation) {
-		let open = self.preview.open().unwrap();
-		let path = open.path.clone().unwrap();
-		let content = open.floating.as_ref().unwrap().snapshot.content_id;
-		let authority = self.preview_security(open.target);
-		let security =
-			crate::security::Security::local(authority.origin.trust());
-		if authority.check_file(&path).is_err() {
+		let content = self.file_preview_document().0.snapshot.content_id;
+		if self.interaction.overlays.quick_open.open() {
+			self.submit_quick_open();
+		} else {
+			let open = self.preview.open().unwrap();
+			let path = open.path.clone().unwrap();
+
+			let authority = self.preview_security(open.target);
+			let security =
+				crate::security::Security::local(authority.origin.trust());
+			if authority.check_file(&path).is_err() {
+				self.dismiss_preview();
+				return;
+			}
 			self.dismiss_preview();
-			return;
+			self.open_document(path, security);
 		}
-		self.dismiss_preview();
-		self.open_document(path, security);
 		if let Activation::Image { source, .. } = &action {
 			self.readers.session.image_loading.requested = Some(source.clone());
 			self.request(false);

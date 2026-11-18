@@ -219,34 +219,74 @@ pub fn wheel_notch() -> WheelNotch {
 	}
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct ClipboardStamp {
+	generation: u64,
+	content_hash: Option<u64>,
+}
+
 #[derive(Default)]
 pub struct Clipboard {
+	generation: u64,
 	#[cfg(not(target_os = "android"))]
 	inner: Option<arboard::Clipboard>,
 }
 impl Clipboard {
-	#[cfg(not(target_os = "android"))]
-	pub fn read(&mut self) -> anyhow::Result<String> {
-		if self.inner.is_none() {
-			self.inner = Some(arboard::Clipboard::new()?);
+	/// Fingerprints the clipboard when a full-document copy must finish later.
+	pub fn stamp(&mut self) -> ClipboardStamp {
+		use std::hash::{DefaultHasher, Hash, Hasher};
+		fn fingerprint(value: impl Hash) -> u64 {
+			let mut hasher = DefaultHasher::new();
+			value.hash(&mut hasher);
+			hasher.finish()
 		}
-		Ok(self.inner.as_mut().unwrap().get_text()?)
+		#[cfg(target_os = "android")]
+		let content_hash = self.read().ok().map(fingerprint);
+		#[cfg(not(target_os = "android"))]
+		let content_hash = self.native().ok().map(|clipboard| {
+			let text = clipboard.get_text().ok();
+			let html = clipboard.get().html().ok();
+			let files = clipboard.get().file_list().ok();
+			let image = clipboard
+				.get_image()
+				.ok()
+				.map(|i| (i.width, i.height, i.bytes));
+			fingerprint((text, html, files, image))
+		});
+		ClipboardStamp {
+			generation: self.generation,
+			content_hash,
+		}
+	}
+	pub fn write(&mut self, text: String) -> anyhow::Result<()> {
+		self.write_text(text)?;
+		self.generation = self.generation.wrapping_add(1);
+		Ok(())
 	}
 
 	#[cfg(not(target_os = "android"))]
-	pub fn write(&mut self, text: String) -> anyhow::Result<()> {
+	fn native(&mut self) -> anyhow::Result<&mut arboard::Clipboard> {
 		if self.inner.is_none() {
 			self.inner = Some(arboard::Clipboard::new()?);
 		}
-		self.inner.as_mut().unwrap().set_text(text)?;
-		Ok(())
+		Ok(self.inner.as_mut().unwrap())
+	}
+
+	#[cfg(not(target_os = "android"))]
+	pub fn read(&mut self) -> anyhow::Result<String> {
+		Ok(self.native()?.get_text()?)
+	}
+
+	#[cfg(not(target_os = "android"))]
+	fn write_text(&mut self, text: String) -> anyhow::Result<()> {
+		Ok(self.native()?.set_text(text)?)
 	}
 	#[cfg(target_os = "android")]
 	pub fn read(&mut self) -> anyhow::Result<String> {
 		android::clipboard_read()
 	}
 	#[cfg(target_os = "android")]
-	pub fn write(&mut self, text: String) -> anyhow::Result<()> {
+	fn write_text(&mut self, text: String) -> anyhow::Result<()> {
 		android::call_string("copyText", &text)
 	}
 }

@@ -353,6 +353,14 @@ impl<P: super::SendEvent> App<P> {
 			native.cancel();
 		}
 		self.frame.focused = false;
+		if let Some(doc) =
+			&mut self.interaction.overlays.quick_open.preview.document
+		{
+			let focused = doc.focused();
+			doc.input(markview_interaction::ViewInput::Cancel);
+			doc.state.focused = focused;
+			doc.scroll.cancel();
+		}
 		self.frame.hover = None;
 		self.frame.pressed = None;
 		self.frame.last_click = None;
@@ -386,15 +394,35 @@ impl<P: super::SendEvent> App<P> {
 	) {
 		self.dismiss_tooltip();
 		if self.interaction.overlays.quick_open.open() {
-			let (_, dy) = super::pointer::wheel_pixels(
+			let (dx, dy) = super::pointer::wheel_pixels(
 				delta,
 				self.wheel_notch,
 				1.0,
 				self.dimensions().2,
 				self.viewport_size(),
 			);
-			// The list takes whole detents as eased steps and a high-resolution
-			// stream as momentum, as every other scrolling surface does.
+			if self.preview_captured() {
+				return;
+			}
+			if matches!(delta, MouseScrollDelta::PixelDelta(_)) {
+				self.trackpad_event(dx, dy, phase);
+				return;
+			}
+			self.cancel_gestures();
+			let (x, y) = self.interaction.pointer.cursor();
+			if self
+				.input_document()
+				.is_some_and(|doc| doc.rect.contains(x, y))
+			{
+				self.document_wheel(
+					dx * self.scroll_speed(),
+					dy * self.scroll_speed(),
+					phase,
+					super::pointer::wheel_mode(delta),
+				);
+				return;
+			}
+			// The result list uses the desktop wheel speed.
 			self.wheel_quick_open(self.animations.scrolls.wheel(
 				-dy,
 				Instant::now(),
@@ -453,7 +481,7 @@ impl<P: super::SendEvent> App<P> {
 		let (dx, dy) = super::pointer::wheel_pixels(
 			delta,
 			self.wheel_notch,
-			self.scroll_speed(),
+			1.0,
 			self.dimensions().2,
 			self.viewport_size(),
 		);
@@ -463,18 +491,11 @@ impl<P: super::SendEvent> App<P> {
 			{
 				// TODO: implement viewport zoom without changing the document layout.
 			} else {
-				// macOS delivers its momentum inside the pixel deltas;
-				// every other desktop's pixel stream asks the reader
-				// to coast on its own when the stream ends.
-				let inertia = if markview_platform::native_scroll_inertia() {
-					super::gestures::Inertia::Native
-				} else {
-					super::gestures::Inertia::Synthesized
-				};
-				self.trackpad_scroll(dx, dy, phase, inertia);
+				self.trackpad_event(dx, dy, phase);
 			}
 			return;
 		}
+		let (dx, dy) = (dx * self.scroll_speed(), dy * self.scroll_speed());
 		self.cancel_gestures();
 		let request = self.animations.scrolls.wheel(
 			-dy,
@@ -511,40 +532,70 @@ impl<P: super::SendEvent> App<P> {
 				Command::Settings(SettingsCommand::Smaller)
 			});
 		} else {
-			let now = Instant::now();
-			let shift = self.interaction.pointer.modifiers().shift_key();
-			// A whole detent inside a live stream is the OS rounding a
-			// packet, not a wheel: the scroll adopts it, or easing it
-			// would kill the momentum.
-			let mode = super::pointer::wheel_mode(delta);
-			match self
-				.interaction
-				.pointer
-				.feed_wheel(dx, dy, now, shift, phase)
-			{
-				// Nothing to move: the direction is not decided yet,
-				// or the event carried no motion.
-				WheelStep::Pending => {}
-				WheelStep::Travel(WheelAxis::Vertical, _, dy) => {
+			self.document_wheel(
+				dx,
+				dy,
+				phase,
+				super::pointer::wheel_mode(delta),
+			);
+		}
+	}
+
+	fn trackpad_event(
+		&mut self,
+		dx: f32,
+		dy: f32,
+		phase: markview_platform::event::TouchPhase,
+	) {
+		// macOS delivers its momentum inside the pixel deltas;
+		// every other desktop's pixel stream asks the reader
+		// to coast on its own when the stream ends.
+		let inertia = if markview_platform::native_scroll_inertia() {
+			super::gestures::Inertia::Native
+		} else {
+			super::gestures::Inertia::Synthesized
+		};
+		self.trackpad_scroll(dx, dy, phase, inertia);
+	}
+	fn document_wheel(
+		&mut self,
+		dx: f32,
+		dy: f32,
+		phase: markview_platform::event::TouchPhase,
+		mode: markview_interaction::WheelMode,
+	) {
+		let now = Instant::now();
+		let shift = self.interaction.pointer.modifiers().shift_key();
+		// A whole detent inside a live stream is the OS rounding a
+		// packet, not a wheel: the scroll adopts it, or easing it
+		// would kill the momentum.
+
+		match self
+			.interaction
+			.pointer
+			.feed_wheel(dx, dy, now, shift, phase)
+		{
+			// Nothing to move: the direction is not decided yet,
+			// or the event carried no motion.
+			WheelStep::Pending => {}
+			WheelStep::Travel(WheelAxis::Vertical, _, dy) => {
+				self.scroll_wheel(-dy, mode);
+			}
+			WheelStep::Travel(WheelAxis::Horizontal, dx, dy) => {
+				// A sideways gesture pans the block under the
+				// pointer; Shift+wheel asks for sideways motion
+				// with a mostly vertical wheel. With no block to
+				// pan, the vertical motion the gesture carries
+				// still scrolls the page rather than being
+				// dropped; a purely sideways gesture has neither a
+				// target nor vertical motion to apply.
+				let pan = if dx.abs() >= dy.abs() { -dx } else { -dy };
+				if !self.horizontal_by(pan) {
 					self.scroll_wheel(-dy, mode);
-				}
-				WheelStep::Travel(WheelAxis::Horizontal, dx, dy) => {
-					// A sideways gesture pans the block under the
-					// pointer; Shift+wheel asks for sideways motion
-					// with a mostly vertical wheel. With no block to
-					// pan, the vertical motion the gesture carries
-					// still scrolls the page rather than being
-					// dropped; a purely sideways gesture has neither a
-					// target nor vertical motion to apply.
-					let pan = if dx.abs() >= dy.abs() { -dx } else { -dy };
-					if !self.horizontal_by(pan) {
-						self.scroll_wheel(-dy, mode);
-					}
 				}
 			}
 		}
 	}
-
 	pub(super) fn tab_cycle_chord(&self, key: &Key) -> bool {
 		let modifiers = self.interaction.pointer.modifiers();
 		modifiers.control_key()

@@ -551,6 +551,14 @@ impl<P: super::SendEvent> App<P> {
 	/// nothing to copy: no selection, an empty one, or one whose revision the
 	/// snapshot has outlived.
 	pub(super) fn selected_text(&self) -> Option<String> {
+		if self.interaction.overlays.quick_open.open() {
+			let preview = &self.interaction.overlays.quick_open.preview;
+			return preview
+				.document
+				.as_ref()
+				.or(preview.reflow.as_ref())?
+				.selected_text();
+		}
 		if let Some(floating) = self
 			.preview
 			.floating()
@@ -571,6 +579,10 @@ impl<P: super::SendEvent> App<P> {
 		let Some(text) = self.selected_text() else {
 			return;
 		};
+		self.copy_reading_text(text);
+	}
+
+	pub(super) fn copy_reading_text(&mut self, text: String) {
 		match self.clipboard.write(text) {
 			Ok(()) => {
 				self.status.set_message(

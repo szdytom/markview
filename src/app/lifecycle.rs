@@ -525,16 +525,13 @@ impl<P: super::SendEvent> App<P> {
 			}
 		}
 		let pans = self.dm.as_mut().map_or_else(Vec::new, |dm| dm.pump(held));
-		if !pans.is_empty() {
-			let speed = self.scroll_speed();
-			for (phase, dx, dy) in pans {
-				self.trackpad_scroll(
-					dx * speed,
-					dy * speed,
-					phase,
-					super::gestures::Inertia::Native,
-				);
-			}
+		for (phase, dx, dy) in pans {
+			self.trackpad_scroll(
+				dx,
+				dy,
+				phase,
+				super::gestures::Inertia::Native,
+			);
 		}
 	}
 

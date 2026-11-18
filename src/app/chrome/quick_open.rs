@@ -169,20 +169,39 @@ pub(super) fn draw(
 	let g = geometry(size, picker.search.matches.len(), picker.scroll());
 	ui.appearance = super::ui_appearance(ui);
 	let mut out = components::frame(g.panel, size.0, size.1);
+	out.extend(draw_header(ui, &g, lang));
+	out.extend(draw_footer(ui, &g, lang));
+	let rows = draw_rows(ui, interaction, picker, browser, size, &g, lang);
+	out.push(g.list.clip(rows));
+	if !picker.search.pending {
+		g.list.draw_bar(&mut out, ui, interaction);
+	}
+	if let Some(preview) = g.preview {
+		draw_preview(ui, picker, preview, g.body, lang, &mut out);
+	}
+	out
+}
+
+fn draw_header(ui: &mut TextShaper, g: &Geometry, lang: Lang) -> Vec<Draw> {
 	let title = ui.fit(lang.empty_quick_access(), 16.0, g.input.w);
-	out.extend(ui.label(
+	let mut out = ui.label(
 		&title,
 		16.0,
 		g.panel.x + 16.0,
 		g.panel.y + 28.0,
 		Paint::Styled(Condition::Panel, C::Color),
-	));
+	);
 	out.push(Draw::Rect(
 		Rect { h: 1.0, ..g.footer },
 		Paint::Styled(Condition::Panel, C::BorderColor),
 	));
+	out
+}
+
+fn draw_footer(ui: &mut TextShaper, g: &Geometry, lang: Lang) -> Vec<Draw> {
 	let hint =
 		ui.fit(lang.quick_open_hint(), 11.0, (g.footer.w - 64.0).max(0.0));
+	let mut out = Vec::new();
 	for (index, paths) in [super::icons::UP, super::icons::DOWN]
 		.into_iter()
 		.enumerate()
@@ -202,6 +221,18 @@ pub(super) fn draw(
 		g.panel.y + g.panel.h - 12.0,
 		Paint::Styled(Condition::Panel, C::Muted),
 	));
+	out
+}
+
+fn draw_rows(
+	ui: &mut TextShaper,
+	interaction: &Drawn<'_>,
+	picker: &Model,
+	browser: &Browser,
+	size: (f32, f32),
+	g: &Geometry,
+	lang: Lang,
+) -> Vec<Draw> {
 	let mut rows = Vec::new();
 	for button in buttons(browser, picker, size, lang) {
 		if matches!(
@@ -230,16 +261,7 @@ pub(super) fn draw(
 			));
 		}
 	}
-	let message = if !browser.file_search_available() {
-		Some(lang.quick_open_no_workspace())
-	} else if picker.search.pending {
-		Some(lang.empty_searching())
-	} else if picker.search.matches.is_empty() {
-		Some(lang.empty_no_files())
-	} else {
-		None
-	};
-	if let Some(message) = message {
+	if let Some(message) = empty_message(browser, picker, lang) {
 		let message =
 			ui.fit(message, 13.0, (g.list.viewport.w - 32.0).max(0.0));
 		rows.extend(ui.label(
@@ -250,73 +272,95 @@ pub(super) fn draw(
 			Paint::Styled(Condition::Panel, C::Muted),
 		));
 	}
-	out.push(g.list.clip(rows));
-	if !picker.search.pending {
-		g.list.draw_bar(&mut out, ui, interaction);
+	rows
+}
+
+fn empty_message(
+	browser: &Browser,
+	picker: &Model,
+	lang: Lang,
+) -> Option<&'static str> {
+	if !browser.file_search_available() {
+		Some(lang.quick_open_no_workspace())
+	} else if picker.search.pending {
+		Some(lang.empty_searching())
+	} else if picker.search.matches.is_empty() {
+		Some(lang.empty_no_files())
+	} else {
+		None
 	}
-	if let Some(preview) = g.preview {
-		out.push(Draw::Rect(
-			Rect {
-				w: (preview.w - 1.0).max(0.0),
-				..preview
+}
+
+fn draw_preview(
+	ui: &mut TextShaper,
+	picker: &Model,
+	preview: Rect,
+	body: Option<Rect>,
+	lang: Lang,
+	out: &mut Vec<Draw>,
+) {
+	out.push(Draw::Rect(
+		Rect {
+			w: (preview.w - 1.0).max(0.0),
+			..preview
+		},
+		Paint::Styled(Condition::Preview, C::Background),
+	));
+	out.push(Draw::Rect(
+		Rect { w: 1.0, ..preview },
+		Paint::Styled(Condition::Panel, C::BorderColor),
+	));
+	out.push(Draw::Rect(
+		Rect {
+			x: preview.x + 24.0,
+			y: preview.y + 46.0,
+			w: (preview.w - 48.0).max(0.0),
+			h: 1.0,
+		},
+		Paint::Styled(Condition::Panel, C::BorderColor),
+	));
+	if let Some(file) = picker.file() {
+		let (name, path, path_x) = preview_header(
+			ui,
+			&file.name,
+			if file.parent.is_empty() {
+				lang.empty_workspace_root()
+			} else {
+				&file.parent
 			},
-			Paint::Styled(Condition::Preview, C::Background),
+			(preview.w - 48.0).max(0.0),
+		);
+		out.extend(ui.label(
+			&name,
+			13.0,
+			preview.x + 24.0,
+			preview.y + 28.0,
+			Paint::Styled(Condition::Panel, C::Color),
 		));
-		out.push(Draw::Rect(
-			Rect { w: 1.0, ..preview },
-			Paint::Styled(Condition::Panel, C::BorderColor),
+		out.extend(ui.label(
+			&path,
+			12.0,
+			preview.x + 24.0 + path_x,
+			preview.y + 28.0,
+			Paint::Styled(Condition::Panel, C::Muted),
 		));
-		out.push(Draw::Rect(
-			Rect {
-				x: preview.x + 24.0,
-				y: preview.y + 46.0,
-				w: (preview.w - 48.0).max(0.0),
-				h: 1.0,
-			},
-			Paint::Styled(Condition::Panel, C::BorderColor),
-		));
-		if let Some(file) = picker.file() {
-			let (name, path, path_x) = preview_header(
-				ui,
-				&file.name,
-				if file.parent.is_empty() {
-					lang.empty_workspace_root()
-				} else {
-					&file.parent
-				},
-				(preview.w - 48.0).max(0.0),
-			);
+	}
+	if let Some(body) = body {
+		if let Some(doc) = &picker.preview.document {
+			doc.draw_scrollbar(out);
+		}
+		let message = picker.file().and_then(|_| picker.preview.message(lang));
+		if let Some(message) = message {
+			let message = ui.fit(message, 13.0, body.w);
 			out.extend(ui.label(
-				&name,
+				&message,
 				13.0,
-				preview.x + 24.0,
-				preview.y + 28.0,
-				Paint::Styled(Condition::Panel, C::Color),
-			));
-			out.extend(ui.label(
-				&path,
-				12.0,
-				preview.x + 24.0 + path_x,
-				preview.y + 28.0,
+				body.x,
+				body.y + 20.0,
 				Paint::Styled(Condition::Panel, C::Muted),
 			));
 		}
-		if let Some(body) = g.body {
-			let message =
-				picker.file().and_then(|_| picker.preview.message(lang));
-			if let Some(message) = message {
-				let message = ui.fit(message, 13.0, body.w);
-				out.extend(ui.label(
-					&message,
-					13.0,
-					body.x,
-					body.y + 20.0,
-					Paint::Styled(Condition::Panel, C::Muted),
-				));
-			}
-		}
 	}
-	out
 }
 
 #[cfg(test)]
@@ -431,7 +475,7 @@ mod tests {
 				options.stylesheet = ui.stylesheet.clone();
 				crate::layout::LayoutEngine::new()
 					.layout(&document.document, &options)
-			}));
+			}), g.body.unwrap_or_default(), false);
 			picker.search.input.set_text(&mut ui, "read");
 			let mut overlay =
 				draw(&mut ui, &drawn, &picker, &browser, size, lang);
@@ -458,9 +502,7 @@ mod tests {
 				hovered_link: None,
 				held_overflow: None,
 			};
-			let scene = g
-				.body
-				.and_then(|body| picker.preview.scene(body, view.theme));
+			let scene = picker.preview.scene(view.theme);
 			let image = crate::test_support::render_goldens::capture_scenes(
 				&mut renderer,
 				&Default::default(),

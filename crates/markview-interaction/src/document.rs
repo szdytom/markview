@@ -133,6 +133,7 @@ impl DocumentInteraction<'_> {
 		let (x, y) = self.viewport.document_point(point.x, point.y);
 		self.snapshot
 			.image_at(x, y, self.horizontal)
+			.filter(|(src, _, _, _)| !src.is_empty())
 			.map(|(src, _, rect, title)| (src, rect, title))
 	}
 	pub fn overflow_bar(

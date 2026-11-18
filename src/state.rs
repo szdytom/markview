@@ -17,7 +17,7 @@ mod motion;
 mod outline;
 mod rows;
 pub(crate) use command::*;
-pub(crate) use display::DisplayState;
+pub(crate) use display::{DisplayState, clamp_horizontal_offsets};
 pub(crate) use drawer::DrawerAnimation;
 pub(crate) use motion::{Animation, Easing, Fade, Tween};
 pub(crate) use outline::OutlineTree;
@@ -928,24 +928,14 @@ impl ReaderSession {
 		self.accepted_revision = reader.content_version;
 		self.follow_update = false;
 		self.restore_reading(viewport);
-		self.display.horizontal.retain(|(bi, oi), offset| {
-			if changed {
-				return false;
-			}
-			if let Some(o) = self
-				.display
-				.snapshot
-				.blocks
-				.get(*bi)
-				.and_then(|b| b.layout.overflow.get(*oi))
-			{
-				*offset =
-					offset.clamp(0., (o.content_width - o.rect.w).max(0.));
-				true
-			} else {
-				false
-			}
-		});
+		if changed {
+			self.display.horizontal.clear();
+		} else {
+			clamp_horizontal_offsets(
+				&self.display.snapshot,
+				&mut self.display.horizontal,
+			);
+		}
 		changed
 	}
 }

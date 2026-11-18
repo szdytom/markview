@@ -84,7 +84,7 @@ markview-test-support = { path = "crates/markview-test-support" }
 proptest = { version = "1.12", default-features = false, features = ["std"] }
 regex = "1"
 regex-automata = "0.4"
-arboard = { version = "3.6", default-features = false, features = ["wayland-data-control"] }
+arboard = { version = "3.6", default-features = false, features = ["wayland-data-control", "image-data"] }
 unicode-segmentation = "1.13"
 tempfile = "3"
 anyhow = "1"

@@ -56,7 +56,12 @@ impl FloatingDocument {
 			right_centered,
 			picture,
 		} = frame;
-		let picture = picture && image::fit(&mut snapshot, bounds);
+		let picture = picture && {
+			let margin = 8.0_f32.min(bounds.w / 2.0).min(bounds.h / 2.0);
+			let width = 420.0_f32.min((bounds.w - 2.0 * margin).max(1.0));
+			let height = 320.0_f32.min((bounds.h - 2.0 * margin).max(1.0));
+			image::fit(&mut snapshot, width, height)
+		};
 		if picture {
 			padding = [0.0; 4];
 		}
@@ -95,6 +100,75 @@ impl FloatingDocument {
 			);
 		}
 
+		Self::embedded(
+			snapshot,
+			revision,
+			anchor,
+			rect,
+			FrameStyle {
+				padding,
+				picture,
+				..frame
+			},
+			gutter,
+		)
+	}
+
+	pub(super) fn picker(
+		mut snapshot: LayoutSnapshot,
+		body: Rect,
+		metrics: markview_layout::scene::ScrollbarMetrics,
+		picture: bool,
+	) -> Self {
+		let picture = picture && image::fit(&mut snapshot, body.w, body.h);
+		let revision = snapshot.revision;
+		let mut doc = Self::embedded(
+			snapshot,
+			revision,
+			body,
+			body,
+			FrameStyle {
+				metrics,
+				picture,
+				..Default::default()
+			},
+			metrics.thickness,
+		);
+		doc.place_in_picker(body);
+		doc
+	}
+
+	pub(super) fn place_in_picker(&mut self, body: Rect) {
+		self.rect = if self.picture {
+			Rect {
+				x: body.x + (body.w - self.snapshot.width) / 2.0,
+				y: body.y + (body.h - self.snapshot.height) / 2.0,
+				w: self.snapshot.width,
+				h: self.snapshot.height,
+			}
+		} else {
+			Rect {
+				w: body.w + self.gutter,
+				..body
+			}
+		};
+		self.scroll.set_max(self.view().max_scroll());
+	}
+
+	fn embedded(
+		snapshot: LayoutSnapshot,
+		revision: markview_document::DocumentRevision,
+		anchor: Rect,
+		rect: Rect,
+		frame: FrameStyle,
+		gutter: f32,
+	) -> Self {
+		let FrameStyle {
+			padding,
+			picture,
+			metrics,
+			..
+		} = frame;
 		let mut floating = Self {
 			anchor,
 			rect,
@@ -112,6 +186,30 @@ impl FloatingDocument {
 		floating
 	}
 
+	pub(super) fn scene(
+		&self,
+		rect: Rect,
+		theme: crate::render::Theme,
+	) -> crate::render::Preview<'_> {
+		crate::render::Preview {
+			interaction: Some(crate::render::SceneInteraction {
+				held_overflow: self.state.held_overflow(),
+				selection: self.state.selection,
+				revision: self.revision.get(),
+				hovered_link: self
+					.state
+					.hover
+					.link
+					.as_ref()
+					.map(|link| link.link_ref()),
+			}),
+			snapshot: &self.snapshot,
+			scroll: self.scroll.offset(),
+			rect,
+			theme,
+			horizontal: &self.horizontal,
+		}
+	}
 	pub(super) fn focused(&self) -> bool {
 		self.state.focused
 	}
@@ -155,6 +253,26 @@ impl FloatingDocument {
 		self.view().scrollbar(self.metrics)
 	}
 
+	pub(super) fn draw_scrollbar(&self, out: &mut Vec<crate::layout::Draw>) {
+		use crate::layout::Draw;
+		if let Some(bar) = self.scrollbar() {
+			let (track, thumb) = bar.bars();
+			out.push(Draw::Rect(
+				track,
+				crate::layout::Paint::Styled(
+					markview_layout::style::Condition::Scrollbar,
+					markview_layout::style::ColorField::Track,
+				),
+			));
+			out.push(Draw::Rect(
+				thumb,
+				crate::layout::Paint::Styled(
+					markview_layout::style::Condition::Scrollbar,
+					markview_layout::style::ColorField::Thumb,
+				),
+			));
+		}
+	}
 	pub(super) fn input(
 		&mut self,
 		input: markview_interaction::ViewInput,
@@ -216,11 +334,11 @@ impl FloatingDocument {
 		&mut self,
 		point: markview_interaction::Point,
 		delta: f32,
-	) {
+	) -> bool {
 		let view = self.view();
 		let point = view.local(point);
 		let viewport = view.context.viewport;
-		markview_interaction::horizontal_by(
+		let consumed = markview_interaction::horizontal_by(
 			&self.snapshot,
 			viewport,
 			&mut self.horizontal,
@@ -228,6 +346,7 @@ impl FloatingDocument {
 			delta,
 		);
 		self.refresh_hover();
+		consumed
 	}
 	pub(super) fn pan(
 		&mut self,
