@@ -86,8 +86,8 @@ class CiInfrastructureTest(unittest.TestCase):
                 self.assertEqual([call["args"] for call in self.calls("sleep")],
                                  [[str(10 * attempt)] for attempt in range(1, min(failures, 3) + 1)])
 
-    def test_apt_retries_both_phases_without_changing_package_pins_or_trust(self):
-        result = self.run_script("scripts/ci_install_packages.sh", "mesa-vulkan-drivers=25.2.8-0ubuntu0.24.04.4",
+    def test_apt_retries_both_phases_without_changing_packages_or_trust(self):
+        result = self.run_script("scripts/ci_install_packages.sh", "poppler-utils", "mesa-vulkan-drivers",
                                  failures={"apt-get:update": 1, "apt-get:install": 1})
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len(self.calls("apt-get:update")), 2)
@@ -97,7 +97,7 @@ class CiInfrastructureTest(unittest.TestCase):
             original = Path("/etc/apt/sources.list.d/ubuntu.sources")
             self.assertEqual(call["sources"], {"ubuntu.sources": original.read_text()} if original.exists() else {})
         for call in self.calls("apt-get:install"):
-            self.assertEqual(call["args"][-3:], ["install", "-y", "mesa-vulkan-drivers=25.2.8-0ubuntu0.24.04.4"])
+            self.assertEqual(call["args"][-4:], ["install", "-y", "poppler-utils", "mesa-vulkan-drivers"])
         self.assertNotIn("--allow-unauthenticated", self.trace.read_text())
         self.trace.write_text("")
         result = self.run_script("scripts/ci_install_packages.sh", "xvfb", failures={"apt-get:update": 10})

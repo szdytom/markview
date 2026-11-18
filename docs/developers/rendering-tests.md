@@ -68,9 +68,9 @@ Missing glyphs and unintended clipping should fail, not silently become a new ba
 Use real regional faces for SC/TC/JP and test emoji versus text presentation,
 combining marks, ligatures, punctuation, formulas and code when changing shaping.
 Pinned fonts make comparisons useful; they do not promise identical output with
-arbitrary system/downloaded fonts. Driver and Poppler pins belong in
-[`ci/render/Dockerfile`](../../ci/render/Dockerfile), alongside the base image
-digest, Ubuntu archive snapshot and Rust archive checksum.
+arbitrary system/downloaded fonts. APT resolves the driver and Poppler from the
+Ubuntu archive snapshot in [`ci/render/Dockerfile`](../../ci/render/Dockerfile).
+The Dockerfile also records the base image digest and Rust archive checksum.
 
 The wrapper mounts the checkout at `/workspace`, with the caller's user and
 group IDs so generated files remain editable. Cargo downloads and build outputs

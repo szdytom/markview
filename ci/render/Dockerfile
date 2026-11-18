@@ -18,8 +18,7 @@ RUN printf '%s\n' \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         build-essential ca-certificates curl git pkg-config xz-utils \
         libfontconfig1-dev libxkbcommon-dev libwayland-dev libvulkan1 vulkan-tools \
-        poppler-utils=24.02.0-1ubuntu9.11 libpoppler134=24.02.0-1ubuntu9.11 \
-        mesa-vulkan-drivers=25.2.8-0ubuntu0.24.04.4 libllvm20=1:20.1.2-0ubuntu1~24.04.3 \
+        poppler-utils mesa-vulkan-drivers \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl --fail --location --retry 3 \
