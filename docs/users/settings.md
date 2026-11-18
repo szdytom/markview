@@ -69,9 +69,9 @@ preview-delay-ms = 250
 ```
 
 The size keys accept `"off"`, `"small"`, `"medium"` or `"large"`.
-For a custom delay, set `preview-delay-ms` to a nonnegative TOML integer in
-milliseconds. For example, `0` skips the wait before previewing. The delay is
-set when each hover begins. When the value differs from all three presets, the
+For a custom delay, set `preview-delay-ms` to a TOML integer from `50` to
+`5000` milliseconds. Values outside that range are rejected. The delay is set
+when each hover begins. When the value differs from all three presets, the
 settings panel leaves them unselected until you choose one.
 
 ## Markdown dialect

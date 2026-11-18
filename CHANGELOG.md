@@ -33,7 +33,7 @@ at the same level, without `[brackets]`.
 - Preview a footnote, an offscreen section of the current document or a linked local Markdown file by hovering over its reference or link, without leaving the page. Move into the popup to scroll, select and copy text, follow links or open images.
 - Preview files by hovering over them in the file sidebar, including Markdown documents and images. The popup opens beside the sidebar and refreshes when the file changes; standalone pictures open in an image-sized popup without scrolling.
 - Choose Off, Small, Medium or Large independently for footnote, file sidebar and link hover previews in Settings. Footnotes default to Small; file sidebar and link previews default to Medium. Tab hover cards and Ctrl+P previews keep their existing sizes.
-- Choose Fast (100 ms), Medium (250 ms, the default) or Slow (500 ms) for hover previews, including tab hover cards, or set a custom millisecond delay with `preview-delay-ms` in `settings.toml`.
+- Choose Fast (100 ms), Medium (250 ms, the default) or Slow (500 ms) for hover previews, including tab hover cards, or set a custom delay from 50 to 5000 ms with `preview-delay-ms` in `settings.toml`.
 
 ### Changed
 

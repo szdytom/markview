@@ -4,10 +4,10 @@ use crate::lang::Lang;
 use std::fs;
 
 #[test]
-fn preview_delay_accepts_large_toml_integers() {
+fn preview_delay_loads_and_saves_its_whole_range() {
 	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
-	for delay_ms in [4_294_967_295u64, 4_294_967_296, i64::MAX as u64] {
+	for delay_ms in [PREVIEW_DELAY_MIN_MS, 375, PREVIEW_DELAY_MAX_MS] {
 		fs::write(
 			&path,
 			format!("preview-delay-ms = {delay_ms}\nfont_size = 20\n"),
@@ -25,6 +25,32 @@ fn preview_delay_accepts_large_toml_integers() {
 		assert!(warning.is_none(), "{delay_ms}: {warning:?}");
 		assert_eq!(store.settings().preview_delay_ms, delay_ms);
 		assert_eq!(store.settings().font_size, 22.0);
+	}
+}
+
+#[test]
+fn preview_delay_rejects_values_outside_its_range() {
+	let dir = crate::test_support::TestDir::new();
+	let path = dir.path().join("settings.toml");
+	for delay_ms in [
+		0,
+		PREVIEW_DELAY_MIN_MS - 1,
+		PREVIEW_DELAY_MAX_MS + 1,
+		4_294_967_296,
+		i64::MAX as u64,
+	] {
+		fs::write(
+			&path,
+			format!("preview-delay-ms = {delay_ms}\nfont_size = 20\n"),
+		)
+		.unwrap();
+		let (store, warning) = SettingsStore::load(Some(path.clone()));
+		assert!(
+			matches!(warning, Some(SettingsWarning::Invalid(_))),
+			"{delay_ms}: {warning:?}"
+		);
+		assert_eq!(store.settings().preview_delay_ms, 250);
+		assert_eq!(store.settings().font_size, 18.0);
 	}
 }
 
@@ -62,12 +88,14 @@ fn preview_delay_defaults_merges_and_persists_presets() {
 		assert_eq!(reopened.settings().preview_delay_ms, delay_ms);
 	}
 
-	fs::write(&path, "preview-delay-ms = 0\n").unwrap();
+	fs::write(&path, "preview-delay-ms = 5000\n").unwrap();
 	assert!(store.reload().unwrap());
-	assert_eq!(store.settings().preview_delay_ms, 0);
-	fs::write(&path, "preview-delay-ms = -1\n").unwrap();
-	assert!(store.reload().is_err());
-	assert_eq!(store.settings().preview_delay_ms, 0);
+	assert_eq!(store.settings().preview_delay_ms, 5000);
+	for delay_ms in ["49", "5001", "-1"] {
+		fs::write(&path, format!("preview-delay-ms = {delay_ms}\n")).unwrap();
+		assert!(store.reload().is_err(), "{delay_ms}");
+		assert_eq!(store.settings().preview_delay_ms, 5000);
+	}
 }
 
 #[test]

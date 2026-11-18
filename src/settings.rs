@@ -22,6 +22,9 @@ pub const SIDEBAR_WIDTH_MIN: f32 = 200.0;
 pub const SIDEBAR_WIDTH_MAX: f32 = 600.0;
 pub const SIDEBAR_WIDTH_STEP: f32 = 20.0;
 
+pub const PREVIEW_DELAY_MIN_MS: u64 = 50;
+pub const PREVIEW_DELAY_MAX_MS: u64 = 5000;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Sidebar {
 	Folder,
@@ -456,6 +459,8 @@ impl ReaderSettings {
 			|| !(0.0..=4.0).contains(&self.paragraph_indent)
 			|| !(SCROLL_SPEED_MIN..=SCROLL_SPEED_MAX)
 				.contains(&self.scroll_speed)
+			|| !(PREVIEW_DELAY_MIN_MS..=PREVIEW_DELAY_MAX_MS)
+				.contains(&self.preview_delay_ms)
 		{
 			bail!("Reader settings are out of range");
 		}
