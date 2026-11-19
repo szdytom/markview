@@ -351,6 +351,7 @@ impl WebPages {
 
 #[derive(Default)]
 struct WindowEvents {
+	launch: markview_platform::ReaderLaunch,
 	pending: Option<std::sync::mpsc::Receiver<Event>>,
 	input: markview_platform::event::NativeInput,
 }
@@ -510,7 +511,18 @@ impl<P: SendEvent> App<P> {
 		);
 		let scroll_wake = proxy.clone();
 		Self {
-			native_events: Default::default(),
+			native_events: WindowEvents {
+				launch: markview_platform::ReaderLaunch::new(
+					if args.new_window {
+						markview_platform::LaunchReason::NewWindow
+					} else if args.path.is_some() || args.web_url.is_some() {
+						markview_platform::LaunchReason::Document
+					} else {
+						markview_platform::LaunchReason::Application
+					},
+				),
+				..Default::default()
+			},
 			surface_insets: [0.0; 4],
 			frame: frame::State::new(preferences.values.window_border),
 			animations: animation::FrameDriver::with_scroll_wake(move || {
@@ -748,6 +760,7 @@ impl<P: SendEvent> App<P> {
 fn native_event(event: markview_platform::NativeEvent) -> Event {
 	use markview_platform::NativeEvent;
 	match event {
+		NativeEvent::Reopen => Event::Activate(None),
 		NativeEvent::Open(path) => Event::Open(Some(path)),
 		NativeEvent::Shared(path) => Event::AndroidShared(path),
 		NativeEvent::OpenUrl(url) => Event::AndroidOpenUrl(url),

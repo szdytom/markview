@@ -7,6 +7,11 @@ mod proptests;
 
 pub mod watch;
 
+/// Whether a reader can wait for native activation after its window closes.
+pub fn supports_windowless_reader() -> bool {
+	cfg!(target_os = "macos")
+}
+
 #[cfg(target_os = "android")]
 #[path = "android.rs"]
 pub mod android;
@@ -380,7 +385,10 @@ pub use window::*;
 mod events;
 #[cfg(any(test, target_os = "android"))]
 mod requests;
-pub use events::{NativeEvent, install_events, shutdown_events};
+pub use events::{
+	LaunchReason, NativeEvent, ReaderLaunch, install_events,
+	install_reader_events, shutdown_events,
+};
 pub mod dm;
 #[cfg(target_os = "macos")]
 mod open_document;

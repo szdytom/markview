@@ -17,6 +17,71 @@ use super::{App, Event, dm};
 use crate::state::Selection;
 impl<P: super::SendEvent> ApplicationHandler for App<P> {
 	fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
+		self.ensure_window(event_loop);
+	}
+	fn suspended(&mut self, _: &dyn ActiveEventLoop) {
+		self.cancel_gestures();
+		self.flush_settings();
+		self.flush_session();
+	}
+	fn destroy_surfaces(&mut self, _: &dyn ActiveEventLoop) {
+		if !markview_platform::touch_layout() {
+			return;
+		}
+		self.cancel_gestures();
+		self.native_events.input = Default::default();
+		self.flush_settings();
+		self.flush_session();
+		self.renderer.take();
+		self.window.take();
+	}
+	fn proxy_wake_up(&mut self, event_loop: &dyn ActiveEventLoop) {
+		while let Some(event) = self
+			.native_events
+			.pending
+			.as_ref()
+			.and_then(|events| events.try_recv().ok())
+		{
+			self.dispatch_native_event(event_loop, event);
+		}
+	}
+
+	fn window_event(
+		&mut self,
+		event_loop: &dyn ActiveEventLoop,
+		window: WindowId,
+		event: winit::event::WindowEvent,
+	) {
+		if markview_platform::supports_windowless_reader()
+			&& self
+				.window
+				.as_ref()
+				.is_none_or(|current| current.id() != window)
+		{
+			return;
+		}
+		let events = self.native_events.input.convert(event_loop, event);
+		for event in events {
+			self.handle_window_event(&event_loop, window, event);
+		}
+	}
+	fn about_to_wait(&mut self, event_loop: &dyn ActiveEventLoop) {
+		let deadline = self.tick(&event_loop, Instant::now());
+		event_loop.set_control_flow(
+			deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil),
+		);
+	}
+}
+
+impl<P> App<P> {
+	pub(super) fn launched_directly(&self) -> bool {
+		self.native_events.launch.reason()
+			== Some(markview_platform::LaunchReason::Application)
+	}
+}
+
+impl<P: super::SendEvent> App<P> {
+	fn ensure_window(&mut self, event_loop: &dyn ActiveEventLoop) {
 		if self.window.is_some() {
 			return;
 		}
@@ -54,6 +119,7 @@ impl<P: super::SendEvent> ApplicationHandler for App<P> {
 			);
 			let dm = dm::DirectManipulation::new(window.as_ref());
 			self.window = Some(window);
+			self.frame.closed = false;
 			self.sync_refresh_rate();
 			self.dm = dm;
 			if self.args.mode == Mode::Window
@@ -90,53 +156,82 @@ impl<P: super::SendEvent> ApplicationHandler for App<P> {
 			event_loop.exit();
 		}
 	}
-	fn suspended(&mut self, _: &dyn ActiveEventLoop) {
-		self.cancel_gestures();
-		self.flush_settings();
-		self.flush_session();
-	}
-	fn destroy_surfaces(&mut self, _: &dyn ActiveEventLoop) {
-		if !markview_platform::touch_layout() {
-			return;
-		}
-		self.cancel_gestures();
-		self.native_events.input = Default::default();
-		self.flush_settings();
-		self.flush_session();
-		self.renderer.take();
-		self.window.take();
-	}
-	fn proxy_wake_up(&mut self, event_loop: &dyn ActiveEventLoop) {
-		while let Some(event) = self
-			.native_events
-			.pending
-			.as_ref()
-			.and_then(|events| events.try_recv().ok())
-		{
-			self.handle_user_event(&event_loop, event);
-		}
-	}
 
-	fn window_event(
+	fn dispatch_native_event(
 		&mut self,
 		event_loop: &dyn ActiveEventLoop,
-		window: WindowId,
-		event: winit::event::WindowEvent,
+		event: Event,
 	) {
-		let events = self.native_events.input.convert(event_loop, event);
-		for event in events {
-			self.handle_window_event(&event_loop, window, event);
+		let activate =
+			matches!(&event, Event::Activate(_) | Event::Picked(Some(_)));
+		let open = matches!(&event, Event::Open(Some(_)));
+		self.handle_user_event(&event_loop, event);
+		if markview_platform::supports_windowless_reader()
+			&& (activate
+				|| (open
+					&& (!self.readers.entries().is_empty()
+						|| self.folder.root().is_some())))
+		{
+			self.ensure_window(event_loop);
+			if let Some(window) = &self.window {
+				window.set_minimized(false);
+				window.focus_window();
+			}
 		}
 	}
-	fn about_to_wait(&mut self, event_loop: &dyn ActiveEventLoop) {
-		let deadline = self.tick(&event_loop, Instant::now());
-		event_loop.set_control_flow(
-			deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil),
-		);
-	}
-}
 
-impl<P: super::SendEvent> App<P> {
+	pub(super) fn close_window(&mut self, event_loop: &impl Loop) {
+		if !markview_platform::supports_windowless_reader()
+			|| self.args.mode != Mode::Window
+			|| (!self.launched_directly() && !self.export.is_running())
+		{
+			event_loop.exit();
+			return;
+		}
+		if !self.launched_directly() {
+			self.flush_session();
+		}
+		self.clear_input_focus();
+		self.cancel_gestures();
+		self.dismiss_preview();
+		while !self.readers.entries().is_empty() {
+			self.readers
+				.close(self.readers.entries().len() - 1, Instant::now());
+		}
+		self.worker.release();
+		self.search_worker.release();
+		self.watch = None;
+		self.folder.close_workspace();
+		self.folder.start.search.input.set_text(&mut self.ui, "");
+		self.folder.start.scroll.reset();
+		self.url_input.set_text(&mut self.ui, "");
+		self.sync_instance_folder(None);
+		self.refresh_start_files();
+		self.export.window_closed();
+		self.flush_settings();
+		self.interaction = Default::default();
+		self.text_input = Default::default();
+		self.tab_strip = Default::default();
+		self.frame = super::frame::State::new(self.frame.border);
+		let scrolls = self.animations.scrolls.clone();
+		self.animations = Default::default();
+		self.animations.scrolls = scrolls;
+		self.native_events.input = Default::default();
+		self.frame.closed = true;
+		self.flush_session();
+		self.frame.focused = false;
+		self.reflow_at = None;
+		self.retry_at = None;
+		self.prewarm_at = None;
+		self.first_frame = None;
+		self.scrollbar_reveal = Default::default();
+		self.status.clear();
+		self.dm = None;
+		self.native_frame = None;
+		self.renderer = None;
+		self.window = None;
+	}
+
 	/// Draws the first frame of a window this platform created hidden, then
 	/// reveals it. A hidden window receives no redraw event, so the frame has
 	/// to be drawn here or the window would stay blank until the next one.
@@ -487,6 +582,8 @@ impl<P: super::SendEvent> App<P> {
 				self.export_finished(*outcome);
 			}
 			Event::Fonts(message) => self.font_message(message),
+			Event::DeviceLost
+				if self.frame.closed && self.renderer.is_none() => {}
 			Event::DeviceLost => {
 				if let Err(e) = self.gpu() {
 					self.fatal = Some(
@@ -535,6 +632,33 @@ impl<P: super::SendEvent> App<P> {
 		}
 	}
 
+	fn windowless_tick(
+		&mut self,
+		event_loop: &impl Loop,
+		now: Instant,
+	) -> Option<Instant> {
+		self.advance_png_export();
+		if !self.export.is_running() {
+			self.renderer = None;
+			if !self.launched_directly() {
+				event_loop.exit();
+				return None;
+			}
+		}
+		if self
+			.preferences
+			.save_deadline()
+			.is_some_and(|deadline| deadline <= now)
+		{
+			self.flush_settings();
+		}
+		self.preferences
+			.save_deadline()
+			.into_iter()
+			.chain(self.export.needs_frame().then_some(now))
+			.min()
+	}
+
 	/// Runs every deadline that came due and returns the soonest one still
 	/// pending, so the loop can sleep until then. `None` means nothing is
 	/// waiting, or this frame asked the loop to stop.
@@ -547,6 +671,9 @@ impl<P: super::SendEvent> App<P> {
 		event_loop: &impl Loop,
 		now: Instant,
 	) -> Option<Instant> {
+		if self.frame.closed {
+			return self.windowless_tick(event_loop, now);
+		}
 		let insets = self.insets();
 		if self.surface_insets != insets {
 			self.surface_insets = insets;
@@ -643,3 +770,6 @@ impl<P: super::SendEvent> App<P> {
 			.min()
 	}
 }
+
+#[cfg(test)]
+mod tests;

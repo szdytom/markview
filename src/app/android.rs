@@ -20,7 +20,7 @@ pub(crate) fn run(
 	let mut app = App::new(args, proxy.clone());
 	app.native_events.pending = Some(receiver);
 	app.tab_strip.phone = markview_platform::android::phone_layout();
-	super::open_document::install(proxy);
+	super::open_document::install(proxy, app.native_events.launch.clone());
 	let result = event_loop.run_app_on_demand(&mut app);
 	app.native_events.pending.take();
 	markview_platform::shutdown_events();

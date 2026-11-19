@@ -21,6 +21,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Changed
+
+- On macOS, closing a directly launched reader keeps Markview available in the Dock. Readers launched for a document or as a new window quit on close after any active export finishes.
+
 ## 0.6.0 - 2026-11-19
 
 This release focuses on interactive previews for footnotes, links, and local files, while lowering memory use, adding native ARM64 Linux packages, and introducing portable mode on Windows and Linux. We’re proud to ship with Comrak 1.0.0 and congratulate @kivikakk on reaching this milestone.

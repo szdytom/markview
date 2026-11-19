@@ -356,8 +356,11 @@ fn run_reader(args: LaunchOptions) -> Result<()> {
 		sender,
 		wake: event_loop.create_proxy(),
 	};
-	super::open_document::install(proxy.clone());
 	let mut app = App::new(args, proxy.clone());
+	super::open_document::install(
+		proxy.clone(),
+		app.native_events.launch.clone(),
+	);
 	app.native_events.pending = Some(receiver);
 	app.instance = instance
 		.map(|primary| primary.listen(move |event| proxy.try_send(event)));
