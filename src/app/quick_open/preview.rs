@@ -133,10 +133,10 @@ impl Preview {
 		let rev = snapshot.revision.get();
 		Some(snapshot.extract_text(snapshot.select_all(rev)?, rev))
 	}
-	pub(in crate::app) fn check_file(&self) {
-		if let Some(request) = &self.request {
-			request.observed.invalidate_if_outdated();
-		}
+	pub(in crate::app) fn file_changed(&self) -> bool {
+		self.request
+			.as_ref()
+			.is_some_and(|request| request.observed.invalidate_if_outdated())
 	}
 	pub(super) fn clear(&mut self) {
 		if let Some(generation) = self.copy_pending.take() {

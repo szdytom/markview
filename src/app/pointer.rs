@@ -415,7 +415,7 @@ impl<P: super::SendEvent> App<P> {
 		self.interaction.pointer.clear_pressed_image();
 		self.interaction.pointer.clear_document_hover();
 		if !self.preview_captured() {
-			self.dismiss_preview();
+			self.dismiss_hover_preview();
 		}
 		if let Some(w) = &self.window {
 			w.set_cursor(CursorIcon::Default.into());
@@ -457,7 +457,7 @@ impl<P: super::SendEvent> App<P> {
 	/// Readies the pointer for the press about to land: the previous gesture
 	/// ends and the capture a swallowed release may have left starts clean.
 	fn prepare_press(&mut self) {
-		self.dismiss_preview();
+		self.dismiss_hover_preview();
 		self.cancel_gestures();
 		self.tab_strip.cancel_drag();
 		self.interaction.widgets.focus_visible = false;

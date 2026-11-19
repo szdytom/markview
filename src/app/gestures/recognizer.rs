@@ -47,6 +47,20 @@ impl<T> Default for Recognizer<T> {
 }
 
 impl<T: Clone> Recognizer<T> {
+	pub(super) fn stationary(&self) -> Option<&T> {
+		self.drag
+			.as_ref()
+			.filter(|drag| drag.axis.is_none())
+			.map(|drag| &drag.target)
+	}
+
+	pub(super) fn stationary_mut(&mut self) -> Option<&mut T> {
+		self.drag
+			.as_mut()
+			.filter(|drag| drag.axis.is_none())
+			.map(|drag| &mut drag.target)
+	}
+
 	pub(super) fn begin(&mut self, id: Contact, point: Point, target: T) {
 		let first = self.contacts.is_empty();
 		self.contacts.insert(id, point);

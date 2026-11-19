@@ -7,6 +7,24 @@ fn contact(id: u64) -> Contact {
 	(DeviceId::from_raw(0), id)
 }
 
+proptest::proptest! {
+	#[test]
+	fn a_hold_stays_eligible_only_while_all_moves_are_within_tap_slop(
+		moves in proptest::collection::vec((-16.0_f32..16.0, -16.0_f32..16.0), 0..20),
+	) {
+		let mut input = Recognizer::default();
+		input.begin(contact(1), (0.0, 0.0), "link");
+		let mut stationary = true;
+		for point in moves {
+			input.update(contact(1), TouchPhase::Moved, point);
+			stationary &= point.0.hypot(point.1) <= 8.0;
+			proptest::prop_assert_eq!(input.stationary(), stationary.then_some(&"link"));
+		}
+		input.update(contact(1), TouchPhase::Ended, (0.0, 0.0));
+		proptest::prop_assert!(input.stationary().is_none());
+	}
+}
+
 #[test]
 fn a_tap_tolerates_jitter_but_a_drag_never_activates_on_release() {
 	let mut input = Recognizer::default();

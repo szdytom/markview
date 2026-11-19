@@ -44,7 +44,14 @@ Code-block copying preserves the entire block's whitespace, including offscreen
 content. Hiding its button (`codeblock-copy = false`) does not affect selection
 copying or export. Phone/tablet-specific options are described in [Android](android.md).
 
-## Hover previews
+## Previews
+
+On a touchscreen, press and hold a footnote reference or a local document or
+image link in the page you're reading, or a file in the folder sidebar. The
+preview stays open when you lift your finger. Swipe inside the popup to scroll.
+Tap outside or press Escape to close it. A quick tap follows the link or opens
+the file. A hold uses the same action when previews are Off for that target or
+the link type has no preview.
 
 On desktop, **Settings → Generic → Interface** offers separate preview sizes
 for footnote references, files in the folder sidebar and links. Each can be

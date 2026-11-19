@@ -34,6 +34,7 @@ at the same level, without `[brackets]`.
 - Preview files by hovering over them in the file sidebar, including Markdown documents and images. The popup opens beside the sidebar and refreshes when the file changes; standalone pictures open in an image-sized popup without scrolling.
 - Choose Off, Small, Medium or Large independently for footnote, file sidebar and link hover previews in Settings. Footnotes default to Small; file sidebar and link previews default to Medium. Tab hover cards and Ctrl+P previews keep their existing sizes.
 - Choose Fast (100 ms), Medium (250 ms, the default) or Slow (500 ms) for hover previews, including tab hover cards, or set a custom delay from 50 to 5000 ms with `preview-delay-ms` in `settings.toml`.
+- Long-press a footnote, a link to a local document or image, or a file in the file sidebar to preview it without leaving the current page. Tap outside the popup or press Escape to close it.
 
 ### Changed
 

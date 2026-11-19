@@ -29,7 +29,7 @@ impl<P: super::super::SendEvent> App<P> {
 				preview.document.as_mut()
 			};
 		}
-		if self.preview_allowed() {
+		if self.preview_allowed() && self.interaction.pointer.drag().is_none() {
 			self.preview.floating_mut()
 		} else {
 			None
@@ -101,7 +101,9 @@ impl<P: super::super::SendEvent> App<P> {
 		if !picker && self.defer_file_preview_input(&input) {
 			return true;
 		}
-		let floating = self.input_document().unwrap();
+		let Some(floating) = self.input_document() else {
+			return true;
+		};
 		let update = floating.input(input);
 		if pressed {
 			floating.state.focused = true;
@@ -151,12 +153,12 @@ impl<P: super::super::SendEvent> App<P> {
 		if !self.interaction.overlays.quick_open.open() {
 			return false;
 		}
-		if matches!(input, ViewInput::Press { .. } | ViewInput::Release(_)) {
-			self.interaction.overlays.quick_open.preview.check_file();
+		// Validate the clicked file without swapping in a queued layout.
+		if matches!(input, ViewInput::Press { .. } | ViewInput::Release(_))
+			&& self.interaction.overlays.quick_open.preview.file_changed()
+		{
 			self.refresh_quick_open_preview();
-			if self.input_document().is_none() {
-				return true;
-			}
+			return true;
 		}
 		if pressed || matches!(input, ViewInput::Scroll { .. }) {
 			self.interaction.overlays.quick_open.preview.follow_end = false;
@@ -246,18 +248,26 @@ impl<P: super::super::SendEvent> App<P> {
 		}
 	}
 
-	pub(in crate::app) fn preview_key(&mut self, key: &Key) -> bool {
-		if !self.preview_allowed() {
+	pub(in crate::app) fn dismiss_preview_on_escape(
+		&mut self,
+		key: &Key,
+	) -> bool {
+		if *key != Key::Named(NamedKey::Escape)
+			|| !self.preview.tracking()
+			|| !self.preview_allowed()
+		{
 			return false;
 		}
-		if matches!(key, Key::Named(NamedKey::Escape))
-			&& self.preview.open().is_some()
-		{
-			self.dismiss_preview();
+		self.dismiss_tooltip();
+		if self.dismiss_preview() {
 			self.redraw();
-			return true;
 		}
-		self.focused_preview_key(key)
+		true
+	}
+
+	pub(in crate::app) fn preview_key(&mut self, key: &Key) -> bool {
+		self.dismiss_preview_on_escape(key)
+			|| (self.preview_allowed() && self.focused_preview_key(key))
 	}
 
 	pub(in crate::app) fn focused_preview_key(&mut self, key: &Key) -> bool {

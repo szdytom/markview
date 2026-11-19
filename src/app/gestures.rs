@@ -8,9 +8,11 @@ mod recognizer;
 use recognizer::{Gesture, Motion, Recognizer};
 
 use super::App;
+use super::preview::{Target as PreviewTarget, TouchAnchor};
 use crate::state::{Command, PanelPage, TextField, WheelAxis, WheelStep};
 
 type Point = (f32, f32);
+const PREVIEW_HOLD: Duration = Duration::from_millis(500);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum TouchAction {
@@ -23,6 +25,7 @@ enum Tap {
 	Caption(super::frame::Caption),
 	Command(Command),
 	Widget(markview_ui_core::WidgetId),
+	FolderEntry(markview_ui_core::WidgetId, usize),
 	Input(TextField),
 	Link(markview_layout::scene::LinkTarget),
 	Image(String),
@@ -52,6 +55,14 @@ enum Surface {
 struct Capture {
 	surface: Surface,
 	tap: Option<Tap>,
+	preview: Option<PreviewHold>,
+}
+
+#[derive(Clone, Copy)]
+struct PreviewHold {
+	target: PreviewTarget,
+	anchor: TouchAnchor,
+	deadline: Option<Instant>,
 }
 
 /// Who authors a pixel stream's release inertia: the OS already put it in the
@@ -74,6 +85,10 @@ pub(super) struct GestureState {
 }
 
 impl GestureState {
+	pub(super) fn preview_deadline(&self) -> Option<Instant> {
+		self.gesture.stationary()?.preview?.deadline
+	}
+
 	#[cfg(test)]
 	pub(super) fn deadline(&self, now: Instant) -> Option<Instant> {
 		self.coasting.then_some(now + Duration::from_millis(16))
@@ -87,12 +102,59 @@ impl GestureState {
 	}
 
 	pub(super) fn suppress_mouse(&self) -> bool {
-		!self.gesture.contacts.is_empty()
+		self.touch_active()
 			|| self.mouse_after.is_some_and(|until| Instant::now() < until)
+	}
+
+	pub(super) fn touch_active(&self) -> bool {
+		!self.gesture.contacts.is_empty()
 	}
 }
 
 impl<P: super::SendEvent> App<P> {
+	pub(super) fn touch_preview_tick(&mut self, now: Instant) {
+		let Some(capture) = self.gestures.gesture.stationary_mut() else {
+			return;
+		};
+		let Some(hold) = capture
+			.preview
+			.as_mut()
+			.filter(|hold| hold.deadline.is_some_and(|at| at <= now))
+		else {
+			return;
+		};
+		// The hold consumes the tap. The finger can still pan until a card appears.
+		hold.deadline = None;
+		let hold = *hold;
+		capture.tap = None;
+		self.interaction.widgets.captured = None;
+		self.begin_touch_preview(hold.target, hold.anchor, now);
+		self.redraw();
+	}
+
+	pub(super) fn finish_touch_preview_hold(&mut self) {
+		if self
+			.gestures
+			.gesture
+			.stationary()
+			.and_then(|capture| capture.preview)
+			.is_some_and(|hold| hold.deadline.is_none())
+		{
+			self.gestures.gesture.drag = None;
+			self.gestures.motion = None;
+		}
+	}
+
+	pub(super) fn cancel_folder_preview_hold(&mut self) {
+		if let Some(capture) = self.gestures.gesture.stationary_mut()
+			&& capture.preview.is_some_and(|hold| {
+				matches!(hold.target, PreviewTarget::File(_))
+			}) {
+			capture.preview = None;
+			capture.tap = None;
+		}
+	}
+
 	pub(super) fn cancel_gestures(&mut self) {
 		self.dismiss_tooltip();
 		self.text_input.hold = None;
@@ -158,7 +220,12 @@ impl<P: super::SendEvent> App<P> {
 		if let Some(widget) =
 			layout.hit_touch(self.interaction.pointer.cursor(), 44.0)
 		{
-			return widget.enabled.then_some(Tap::Widget(widget.id));
+			return widget.enabled.then_some(match widget.message {
+				Command::Chrome(ChromeCommand::FolderEntry(id)) => {
+					Tap::FolderEntry(widget.id, id)
+				}
+				_ => Tap::Widget(widget.id),
+			});
 		}
 
 		if self.interaction.overlays.modal_open() {
@@ -408,7 +475,6 @@ impl<P: super::SendEvent> App<P> {
 		id: recognizer::Contact,
 		point: Point,
 	) -> Option<TouchAction> {
-		let mut window_action = None;
 		self.gestures.swipe_distance = 0.0;
 		self.gestures.input_drag = false;
 		self.gestures.motion = None;
@@ -424,45 +490,55 @@ impl<P: super::SendEvent> App<P> {
 		self.interaction.widgets.focus_visible = false;
 		self.interaction.reset_clicks();
 		self.readers.session.select_all_pending = false;
-		let capture = Capture {
-			surface: self.touch_surface(),
-			tap: self.touch_tap(),
+		let first = self.gestures.gesture.contacts.is_empty();
+		let dismissed = first && self.prepare_preview_for_touch(point);
+		let window_action = self.touch_window_drag(first, point);
+		let mut capture = Capture {
+			surface: Surface::None,
+			tap: None,
+			preview: None,
 		};
-		let capture = if markview_platform::client_resize()
-			&& self.gestures.gesture.contacts.is_empty()
-		{
-			self.tab_metrics.sync(&mut self.ui, &self.readers.labels());
-			let layout = self.frame_layout();
-			let direction = layout.resize_at(point.0, point.1);
-			if direction.is_some() || layout.draggable(point.0, point.1) {
-				self.frame.last_click = None;
-				window_action = Some(TouchAction::Drag(direction));
-				Capture {
-					surface: Surface::None,
-					tap: None,
-				}
-			} else {
-				capture
-			}
-		} else {
-			capture
-		};
+		if window_action.is_none() {
+			capture.surface = self.touch_surface();
+			capture.tap = self.touch_tap();
+		}
 		// A finger that lands on a control owns it: nothing eases under it
 		// while the contact decides between a tap and a pan.
 		self.cancel_control_scroll(capture.surface);
+		if first {
+			capture.preview =
+				self.preview_hold_target(&capture)
+					.map(|target| PreviewHold {
+						target,
+						anchor: TouchAnchor {
+							point,
+							revision: (!matches!(
+								target,
+								PreviewTarget::File(_)
+							))
+							.then_some(
+								self.document_interaction().snapshot.revision,
+							),
+						},
+						deadline: Some(Instant::now() + PREVIEW_HOLD),
+					});
+		}
+		if dismissed {
+			capture.tap = None;
+		}
 		self.frame.pressed = match &capture.tap {
 			Some(Tap::Caption(caption)) => Some(*caption),
 			_ => None,
 		};
 		self.interaction.widgets.captured = match &capture.tap {
-			Some(Tap::Widget(id)) => Some(*id),
+			Some(Tap::Widget(id) | Tap::FolderEntry(id, _)) => Some(*id),
 			Some(Tap::Command(command)) => Some(command.widget_id()),
 			_ => None,
 		};
 		if capture.surface == Surface::Viewer
 			&& matches!(&capture.tap, Some(Tap::CloseViewer))
 		{
-			if self.gestures.gesture.contacts.is_empty() {
+			if first {
 				self.interaction
 					.overlays
 					.viewer
@@ -482,6 +558,41 @@ impl<P: super::SendEvent> App<P> {
 		window_action
 	}
 
+	fn touch_window_drag(
+		&mut self,
+		first: bool,
+		point: Point,
+	) -> Option<TouchAction> {
+		if !markview_platform::client_resize() || !first {
+			return None;
+		}
+		self.tab_metrics.sync(&mut self.ui, &self.readers.labels());
+		let layout = self.frame_layout();
+		let direction = layout.resize_at(point.0, point.1);
+		if direction.is_some() || layout.draggable(point.0, point.1) {
+			self.frame.last_click = None;
+			Some(TouchAction::Drag(direction))
+		} else {
+			None
+		}
+	}
+
+	fn preview_hold_target(&self, capture: &Capture) -> Option<PreviewTarget> {
+		let target = match (&capture.tap, capture.surface) {
+			(Some(Tap::Link(_)), Surface::Document | Surface::Overflow(..)) => {
+				self.document_preview_target(
+					self.interaction.pointer.cursor(),
+					true,
+				)
+			}
+			(Some(Tap::FolderEntry(_, id)), _) => self
+				.folder_preview_path(*id)
+				.map(|_| PreviewTarget::File(*id)),
+			_ => None,
+		}?;
+		self.preview_enabled(target).then_some(target)
+	}
+
 	fn update_touch_contact(
 		&mut self,
 		id: recognizer::Contact,
@@ -489,7 +600,18 @@ impl<P: super::SendEvent> App<P> {
 		point: Point,
 	) -> Option<TouchAction> {
 		match self.gestures.gesture.update(id, phase, point) {
-			Some(Gesture::Tap(capture)) => self.activate_tap(capture),
+			Some(Gesture::Tap(capture)) => {
+				let now = Instant::now();
+				if let Some(hold) = capture
+					.preview
+					.filter(|hold| hold.deadline.is_some_and(|at| at <= now))
+				{
+					self.begin_touch_preview(hold.target, hold.anchor, now);
+					None
+				} else {
+					self.activate_tap(capture)
+				}
+			}
 			Some(Gesture::Pan(capture, delta)) => {
 				self.pan_contact(capture, delta, phase, point);
 				None
@@ -541,7 +663,7 @@ impl<P: super::SendEvent> App<P> {
 				self.action(command);
 				None
 			}
-			Some(Tap::Widget(id)) => {
+			Some(Tap::Widget(id) | Tap::FolderEntry(id, _)) => {
 				let buttons = self.buttons();
 				if let Some(button) =
 					buttons.iter().find(|b| b.id == id && b.enabled)

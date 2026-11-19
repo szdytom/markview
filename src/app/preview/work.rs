@@ -64,16 +64,26 @@ impl Source {
 			})
 			&& self.version == app.readers.session.version
 			&& same_document
-			&& context.snapshot.revision == self.revision
 			&& app.options() == self.original_options
 			&& app.scene_preview_bounds(self.target) == self.bounds
-			&& app.scene_preview_anchor(self.target) == Some(self.anchor)
+			&& self.matches_anchor(app)
 			&& images.generation == self.images.generation
 			&& images.entries == self.images.entries
 			&& images.keys == self.images.keys
 	}
 
-	fn matches_destination<P: super::super::SendEvent>(
+	pub(super) fn matches_anchor<P: super::super::SendEvent>(
+		&self,
+		app: &App<P>,
+	) -> bool {
+		app.scene_preview_matches_anchor(
+			self.target,
+			self.anchor,
+			self.revision,
+		)
+	}
+
+	pub(super) fn matches_destination<P: super::super::SendEvent>(
 		&self,
 		app: &App<P>,
 	) -> bool {

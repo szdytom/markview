@@ -826,6 +826,8 @@ impl<P: SendEvent> App<P> {
 					.record(tree.root.clone(), tree.name.clone());
 				let reveal =
 					select || self.folder.open || self.phone_folder_open();
+				self.cancel_folder_preview_hold();
+				self.invalidate_touch_file_preview(&tree);
 				self.folder.tree = Some(tree);
 				self.refresh_start_files();
 				self.folder.reset_rows();

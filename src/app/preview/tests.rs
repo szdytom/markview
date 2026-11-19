@@ -8,6 +8,7 @@ mod links;
 mod pictures;
 mod profile;
 mod sizes;
+mod touch;
 use super::*;
 use crate::{
 	app::{Event, SendEvent},

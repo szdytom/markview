@@ -1,4 +1,4 @@
-//! Delayed hover previews shared by every hover target.
+//! Delayed previews for mouse hover and touchscreen holds.
 //!
 //! The card itself is chrome (`chrome::preview`); this module owns what the
 //! pointer rests on, when the delay elapses, and which target produced the open
@@ -484,6 +484,7 @@ fn draw_bottom(
 #[derive(Default)]
 pub(super) struct Preview {
 	hover: Option<Hover>,
+	touch: Option<TouchAnchor>,
 	open: Option<Open>,
 	serial: u64,
 	pending: Option<Pending>,
@@ -493,6 +494,12 @@ pub(super) struct Preview {
 	last_build: Duration,
 	/// The body rectangle the chrome reserved this frame, if the card has one.
 	body: Option<Rect>,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct TouchAnchor {
+	pub(super) point: (f32, f32),
+	pub(super) revision: Option<markview_document::DocumentRevision>,
 }
 
 /// What the pointer was resting on. Each owner names its targets, so a tab id
@@ -710,6 +717,7 @@ impl Preview {
 		self.observed = None;
 		self.cancel_work();
 		self.hover = None;
+		self.touch = None;
 		self.body = None;
 		self.open.take().is_some()
 	}
@@ -773,16 +781,68 @@ impl Preview {
 }
 
 impl<P: super::SendEvent> App<P> {
+	pub(super) fn begin_touch_preview(
+		&mut self,
+		target: Target,
+		anchor: TouchAnchor,
+		now: Instant,
+	) {
+		self.dismiss_preview();
+		self.preview.touch = Some(anchor);
+		self.preview.hover(Some(target), now, Duration::ZERO);
+	}
+
+	pub(super) fn prepare_preview_for_touch(
+		&mut self,
+		point: (f32, f32),
+	) -> bool {
+		self.dismiss_hover_preview();
+		let visible =
+			self.preview.floating().filter(|_| self.preview_allowed());
+		if visible
+			.is_some_and(|floating| floating.rect.contains(point.0, point.1))
+		{
+			return false;
+		}
+		let outside_popup = visible.is_some();
+		self.dismiss_touch_preview() && outside_popup
+	}
+
+	pub(super) fn dismiss_touch_preview(&mut self) -> bool {
+		if self.preview.touch.is_none() {
+			return false;
+		}
+		if self.dismiss_preview() {
+			self.redraw();
+		}
+		true
+	}
+
 	/// The hover target under the pointer after it moved, so its card can open
 	/// once the delay elapses. Returns whether the painted card changed.
 	pub(super) fn hover_preview(&mut self, now: Instant) -> bool {
-		if self
+		if !self.preview_allowed()
+			|| (self.preview.touch.is_none() && self.gestures.suppress_mouse())
+		{
+			return self.preview.tracking() && self.dismiss_preview();
+		}
+		if let Some(source) = self
 			.preview
 			.pending
 			.as_ref()
-			.is_some_and(|pending| !pending.source.matches(self))
+			.map(|pending| &pending.source)
+			.filter(|source| !source.matches(self))
 		{
-			let target = self.preview.open().map(|open| open.target);
+			let target = if self.preview.touch.is_some() {
+				if !source.matches_anchor(self)
+					|| !source.matches_destination(self)
+				{
+					return self.dismiss_preview();
+				}
+				Some(source.target)
+			} else {
+				self.preview.open().map(|open| open.target)
+			};
 			self.preview.cancel_work();
 			if let Some(target) = target {
 				self.start_link_preview(target);
@@ -790,40 +850,52 @@ impl<P: super::SendEvent> App<P> {
 		}
 		if let Some(open) = self.preview.open()
 			&& let Some(floating) = open.floating.as_ref()
-			&& (self.document_interaction().snapshot.revision
-				!= floating.revision
-				|| self.scene_preview_anchor(open.target)
-					!= Some(floating.anchor))
-		{
+			&& !self.scene_preview_matches_anchor(
+				open.target,
+				floating.anchor,
+				floating.revision,
+			) {
 			return self.dismiss_preview();
 		}
-		let target = if self.preview_allowed() {
-			self.target_at_cursor()
-		} else {
-			None
-		};
-		let target = target.filter(|target| {
-			target.preview_kind().is_none_or(|kind| {
-				self.preferences.preview_size(kind) != PreviewSize::Off
-			})
-		});
+		if self.preview.touch.is_some() {
+			return false;
+		}
+		let target = self
+			.target_at_cursor()
+			.filter(|target| self.preview_enabled(*target));
 		let delay = Duration::from_millis(self.preferences.preview_delay_ms);
 		self.preview.hover(target, now, delay)
 	}
 
+	pub(super) fn preview_enabled(&self, target: Target) -> bool {
+		target.preview_kind().is_none_or(|kind| {
+			self.preferences.preview_size(kind) != PreviewSize::Off
+		})
+	}
+
+	fn scene_preview_matches_anchor(
+		&self,
+		target: Target,
+		anchor: Rect,
+		revision: markview_document::DocumentRevision,
+	) -> bool {
+		let touch_file =
+			self.preview.touch.is_some() && matches!(target, Target::File(_));
+		(touch_file
+			|| self.document_interaction().snapshot.revision == revision)
+			&& self.scene_preview_anchor(target) == Some(anchor)
+	}
+
 	/// Starts layout at its preparation deadline and waits for the show deadline.
 	pub(super) fn preview_tick(&mut self, now: Instant) {
+		self.touch_preview_tick(now);
 		if !self.preview.tracking() {
 			return;
 		}
-		self.refresh_preview_file();
 		if self.hover_preview(now) {
 			self.redraw();
 		}
-		if !self.preview_allowed() {
-			self.dismiss_preview();
-			return;
-		}
+		self.refresh_preview_file();
 		while let Some(completion) = self.preview.worker.try_recv() {
 			self.preview.accept(completion);
 		}
@@ -902,6 +974,7 @@ impl<P: super::SendEvent> App<P> {
 				..source.frame
 			},
 		);
+		self.finish_touch_preview_hold();
 		self.preview.open.as_mut().unwrap().path =
 			source.destination.path.clone();
 		self.preview.open.as_mut().unwrap().origins = ready.origins;
@@ -977,19 +1050,47 @@ impl<P: super::SendEvent> App<P> {
 		self.preview.dismiss()
 	}
 
-	fn preview_allowed(&self) -> bool {
-		self.frame.focused
-			&& !self.tab_strip.phone
-			&& self.interaction.panel == crate::state::PanelPage::Closed
-			&& !self.readers.session.search.open
+	pub(super) fn dismiss_hover_preview(&mut self) -> bool {
+		self.preview.touch.is_none()
+			&& self.preview.tracking()
+			&& self.dismiss_preview()
+	}
+
+	pub(super) fn preview_allowed(&self) -> bool {
+		self.preview_layout_allows()
+			&& self
+				.preview
+				.touch
+				.and_then(|touch| touch.revision)
+				.is_none_or(|revision| {
+					revision == self.document_interaction().snapshot.revision
+				})
+			&& self.frame.focused
 			&& !self.interaction.overlays.modal_open()
 			&& !self.interaction.overlays.quick_open.open()
 			&& !self.interaction.overlays.dropdown_open()
 			&& !self.interaction.overlays.viewer_open()
 			&& self.tab_strip.drag.is_none()
-			&& self.interaction.pointer.drag().is_none()
+			&& (self.preview.touch.is_some()
+				|| self.interaction.pointer.drag().is_none())
 			&& self.interaction.panels.sidebar().drag().is_none()
 			&& self.folder.grab.is_none()
+	}
+
+	fn preview_layout_allows(&self) -> bool {
+		let touch = self.preview.touch.is_some();
+		if self.phone_folder_open() {
+			touch
+				&& self
+					.preview
+					.hover
+					.as_ref()
+					.is_some_and(|h| matches!(h.target, Target::File(_)))
+		} else {
+			(touch
+				|| (!self.tab_strip.phone && !self.readers.session.search.open))
+				&& self.interaction.panel == crate::state::PanelPage::Closed
+		}
 	}
 
 	fn target_at_cursor(&mut self) -> Option<Target> {
@@ -1021,30 +1122,56 @@ impl<P: super::SendEvent> App<P> {
 					return self.preview.open().map(|open| open.target);
 				}
 			}
-			let context = self.document_interaction();
-			let link =
-				context.link_ref(markview_interaction::Point::new(x, y))?;
-			return match link.target {
-				markview_layout::scene::LinkTarget::FootnoteDefinition(_) => {
-					Some(Target::Footnote {
-						block: link.block,
-						link: link.id,
-					})
-				}
-				markview_layout::scene::LinkTarget::Url(url) => {
-					let destination = self.preview_destination(url)?;
-					(!self.preview_destination_visible(&destination)).then_some(
-						Target::Link {
-							block: link.block,
-							link: link.id,
-						},
-					)
-				}
-				_ => None,
-			};
+			return self.document_preview_target((x, y), false);
 		}
 		self.tab_at_cursor()
 			.map(|index| Target::Tab(self.readers.entries()[index].id))
+	}
+
+	pub(super) fn document_preview_target(
+		&self,
+		(x, y): (f32, f32),
+		touch: bool,
+	) -> Option<Target> {
+		use markview_layout::scene::LinkTarget;
+		let context = self.document_interaction();
+		let link = context.link_ref(markview_interaction::Point::new(x, y))?;
+		match link.target {
+			LinkTarget::FootnoteDefinition(_) => Some(Target::Footnote {
+				block: link.block,
+				link: link.id,
+			}),
+			LinkTarget::Url(url) => {
+				let destination = self.preview_destination(url)?;
+				if !touch && self.preview_destination_visible(&destination) {
+					return None;
+				}
+				Some(Target::Link {
+					block: link.block,
+					link: link.id,
+				})
+			}
+			_ => None,
+		}
+	}
+
+	fn preview_link_point(&self) -> markview_interaction::Point {
+		let (x, y) = self
+			.preview
+			.touch
+			.map(|touch| touch.point)
+			.unwrap_or_else(|| {
+				self.preview.floating().map_or_else(
+					|| self.interaction.pointer.cursor(),
+					|floating| {
+						(
+							floating.anchor.x + floating.anchor.w / 2.0,
+							floating.anchor.y + floating.anchor.h / 2.0,
+						)
+					},
+				)
+			});
+		markview_interaction::Point::new(x, y)
 	}
 
 	fn preview_destination(&self, url: &str) -> Option<work::Destination> {
@@ -1123,16 +1250,7 @@ impl<P: super::SendEvent> App<P> {
 			return None;
 		};
 		let context = self.document_interaction();
-		let (x, y) = self.preview.floating().map_or_else(
-			|| self.interaction.pointer.cursor(),
-			|floating| {
-				(
-					floating.anchor.x + floating.anchor.w / 2.0,
-					floating.anchor.y + floating.anchor.h / 2.0,
-				)
-			},
-		);
-		let point = markview_interaction::Point::new(x, y);
+		let point = self.preview_link_point();
 		let reference = context.link_ref(point)?;
 		if reference.block != block || reference.id != link {
 			return None;
@@ -1150,7 +1268,9 @@ impl<P: super::SendEvent> App<P> {
 			}
 			markview_layout::scene::LinkTarget::Url(url) => {
 				let destination = self.preview_destination(url)?;
-				if self.preview_destination_visible(&destination) {
+				if self.preview.touch.is_none()
+					&& self.preview_destination_visible(&destination)
+				{
 					return None;
 				}
 				destination
@@ -1207,7 +1327,7 @@ impl<P: super::SendEvent> App<P> {
 				max_height,
 				padding,
 				metrics,
-				right_centered: matches!(target, Target::File(_)),
+				right_centered: self.preview_beside_folder(target),
 				picture: false,
 			},
 			document,

@@ -76,6 +76,9 @@ impl Loop for &dyn ActiveEventLoop {
 
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn android_back(&mut self) {
+		if self.dismiss_touch_preview() {
+			return;
+		}
 		if self.interaction.overlays.quick_open.open() {
 			self.close_quick_open();
 		} else if self.readers.session.search.open {
@@ -181,12 +184,10 @@ impl<P: super::SendEvent> App<P> {
 		event_loop: &impl Loop,
 		event: &WindowEvent,
 	) -> bool {
-		if markview_platform::touch_layout()
-			&& let WindowEvent::KeyboardInput { event, .. } = event
+		if let WindowEvent::KeyboardInput { event, .. } = event
 			&& event.state == ElementState::Pressed
-			&& event.logical_key == Key::Named(NamedKey::BrowserBack)
+			&& self.before_window_key(&event.logical_key)
 		{
-			self.android_back();
 			return true;
 		}
 		if self.tooltip_event(event)
@@ -206,6 +207,16 @@ impl<P: super::SendEvent> App<P> {
 			return true;
 		}
 		self.input_event(event)
+	}
+
+	fn before_window_key(&mut self, key: &Key) -> bool {
+		if markview_platform::touch_layout()
+			&& *key == Key::Named(NamedKey::BrowserBack)
+		{
+			self.android_back();
+			return true;
+		}
+		self.dismiss_preview_on_escape(key)
 	}
 
 	fn search_window_key(
@@ -317,7 +328,7 @@ impl<P: super::SendEvent> App<P> {
 	}
 
 	fn middle_pressed(&mut self) {
-		self.dismiss_preview();
+		self.dismiss_hover_preview();
 		if self.middle_press_quick_access() {
 			return;
 		}
@@ -392,6 +403,9 @@ impl<P: super::SendEvent> App<P> {
 		delta: MouseScrollDelta,
 		phase: markview_platform::event::TouchPhase,
 	) {
+		if self.gestures.touch_active() {
+			return;
+		}
 		self.dismiss_tooltip();
 		if self.interaction.overlays.quick_open.open() {
 			let (dx, dy) = super::pointer::wheel_pixels(

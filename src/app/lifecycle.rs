@@ -631,6 +631,7 @@ impl<P: super::SendEvent> App<P> {
 			.chain(self.preferences.save_deadline())
 			.chain(self.persistence.deadline)
 			.chain(self.animations.deadline())
+			.chain(self.gestures.preview_deadline())
 			.chain(self.preview.deadline())
 			.chain(self.interaction.overlays.tooltip.hint.deadline())
 			.chain(self.dm.as_ref().and_then(|dm| dm.deadline(now)))

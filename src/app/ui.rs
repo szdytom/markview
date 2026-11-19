@@ -292,7 +292,7 @@ impl<P: super::SendEvent> App<P> {
 			&self.tab_strip,
 			&self.tab_metrics.widths,
 			self.tab_metrics.labels(),
-			self.preview.open(),
+			self.preview.open().filter(|_| self.preview_allowed()),
 			Some(&self.folder),
 		)
 		.with_now(self.frame_now());

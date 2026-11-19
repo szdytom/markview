@@ -250,8 +250,8 @@ impl<'a> Chrome<'a> {
 			Layer::Footer,
 			Layer::Status,
 			Layer::Drawers,
-			Layer::Preview,
 			Layer::Panel,
+			Layer::Preview,
 			Layer::Dropdown,
 			Layer::QuickOpen,
 			Layer::Modal,
@@ -935,18 +935,6 @@ impl<'a> Chrome<'a> {
 	/// rectangle the renderer composes the target's scene into.
 	fn draw_preview(&mut self, out: &mut Vec<Draw>) -> Option<Rect> {
 		let preview = self.session.preview?;
-		// A panel, list, confirmation or search owns the screen; the card must
-		// not float above them for the frame before the tick closes it.
-		if self.session.strip.phone
-			|| self.interaction.panel_open()
-			|| self.session.doc.search.open
-			|| self.interaction.overlays.quick_open.open()
-			|| self.interaction.overlays.modal_open()
-			|| self.interaction.overlays.dropdown_open()
-			|| self.interaction.overlays.viewer_open()
-		{
-			return None;
-		}
 		if let Some(floating) = preview.floating.as_ref() {
 			out.extend(preview::surface(self.ui, floating.rect));
 			floating.draw_scrollbar(out);
@@ -1426,8 +1414,8 @@ mod tests {
 				Layer::Footer,
 				Layer::Status,
 				Layer::Drawers,
-				Layer::Preview,
 				Layer::Panel,
+				Layer::Preview,
 				Layer::Dropdown,
 				Layer::QuickOpen,
 				Layer::Modal,

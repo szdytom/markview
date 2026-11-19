@@ -3,7 +3,12 @@ use super::*;
 
 impl<P: super::super::SendEvent> App<P> {
 	fn folder_preview_rows(&self) -> Vec<(usize, Rect)> {
-		if !self.folder.open || self.folder.reveal(self.frame_now()) != 1.0 {
+		let visible = if self.phone_folder_open() {
+			self.tabs_reveal() == 1.0
+		} else {
+			self.folder.open && self.folder.reveal(self.frame_now()) == 1.0
+		};
+		if !visible {
 			return Vec::new();
 		}
 		let list = self.folder.list(self.folder_rect(), self.frame_now());
@@ -63,22 +68,17 @@ impl<P: super::super::SendEvent> App<P> {
 				.into_iter()
 				.find_map(|(index, rect)| (id == index).then_some(rect));
 		}
-		let (x, y) = self.preview.floating().map_or_else(
-			|| self.interaction.pointer.cursor(),
-			|floating| {
-				(
-					floating.anchor.x + floating.anchor.w / 2.0,
-					floating.anchor.y + floating.anchor.h / 2.0,
-				)
-			},
-		);
 		self.document_interaction()
-			.link_rect(markview_interaction::Point::new(x, y))
+			.link_rect(self.preview_link_point())
+	}
+
+	pub(super) fn preview_beside_folder(&self, target: Target) -> bool {
+		matches!(target, Target::File(_)) && !self.tab_strip.phone
 	}
 
 	pub(super) fn scene_preview_bounds(&self, target: Target) -> Rect {
 		let bounds = self.document_interaction().viewport.clip();
-		if matches!(target, Target::File(_)) {
+		if self.preview_beside_folder(target) {
 			let drawer = self.folder_rect();
 			let x = drawer.x + drawer.w;
 			Rect {
@@ -102,12 +102,30 @@ impl<P: super::super::SendEvent> App<P> {
 		}
 	}
 
-	pub(super) fn folder_preview_path(
+	pub(in crate::app) fn folder_preview_path(
 		&self,
 		id: usize,
 	) -> Option<&std::path::Path> {
 		let entry = self.folder.tree.as_ref()?.entries.get(id)?;
 		(!entry.directory).then_some(entry.path.as_path())
+	}
+
+	pub(in crate::app) fn invalidate_touch_file_preview(
+		&mut self,
+		tree: &super::super::folder::Tree,
+	) {
+		if self.preview.touch.is_some()
+			&& let Some(Target::File(id)) =
+				self.preview.hover.as_ref().map(|hover| hover.target)
+			&& tree
+				.entries
+				.get(id)
+				.filter(|entry| !entry.directory)
+				.map(|entry| entry.path.as_path())
+				!= self.folder_preview_path(id)
+		{
+			self.dismiss_touch_preview();
+		}
 	}
 
 	pub(super) fn folder_preview_source(

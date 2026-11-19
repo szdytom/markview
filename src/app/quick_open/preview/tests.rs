@@ -533,6 +533,16 @@ fn picker_doc(app: &App<Proxy>) -> &FloatingDocument {
 		.unwrap()
 }
 
+fn preview_has_decoded_images(app: &App<Proxy>) -> bool {
+	app.interaction
+		.overlays
+		.quick_open
+		.preview
+		.document
+		.as_ref()
+		.is_some_and(|doc| !doc.snapshot.images.decoded().is_empty())
+}
+
 #[test]
 fn touch_drag_scrolls_the_preview() {
 	use markview_platform::event::{DeviceId, Touch, TouchPhase};
@@ -646,9 +656,7 @@ fn open_extensionless_picture_previews_like_the_reader() {
 			.document
 			.is_some()
 	);
-	settle(&mut app, &events, |app| {
-		!picker_doc(app).snapshot.images.decoded().is_empty()
-	});
+	settle(&mut app, &events, preview_has_decoded_images);
 }
 
 #[test]
@@ -754,15 +762,7 @@ fn touch_tap_opens_picker_image() {
 		.unwrap();
 	let (mut app, events) = setup(dir.path());
 	query(&mut app, &events, "picture");
-	settle(&mut app, &events, |app| {
-		app.interaction
-			.overlays
-			.quick_open
-			.preview
-			.document
-			.as_ref()
-			.is_some_and(|doc| !doc.snapshot.images.decoded().is_empty())
-	});
+	settle(&mut app, &events, preview_has_decoded_images);
 	let rect = picker_doc(&app).body();
 	for phase in [TouchPhase::Started, TouchPhase::Ended] {
 		app.handle_touch(Touch {
@@ -1005,15 +1005,7 @@ fn picture_completion_between_press_and_release_keeps_the_click() {
 		.unwrap();
 	let (mut app, events) = setup(dir.path());
 	query(&mut app, &events, "picture");
-	settle(&mut app, &events, |app| {
-		app.interaction
-			.overlays
-			.quick_open
-			.preview
-			.document
-			.as_ref()
-			.is_some_and(|doc| !doc.snapshot.images.decoded().is_empty())
-	});
+	settle(&mut app, &events, preview_has_decoded_images);
 	let doc = picker_doc(&app);
 	let rect = doc.body();
 	let point = markview_interaction::Point::new(rect.x + 8.0, rect.y + 6.0);
@@ -1219,11 +1211,58 @@ fn unregistered_image_in_partial_preview_waits_for_its_resource() {
 	image::RgbaImage::new(20, 20)
 		.save(dir.path().join("photo.png"))
 		.unwrap();
-	fs::write(
-		dir.path().join("article.md"),
-		format!("![](photo.png)\n\n{}", "Paragraph.\n\n".repeat(3000)),
-	)
-	.unwrap();
+	let source = format!("![](photo.png)\n\n{}", "Paragraph.\n\n".repeat(100));
+	fs::write(dir.path().join("article.md"), &source).unwrap();
+	let (mut app, events) = setup(dir.path());
+	query(&mut app, &events, "article");
+	let body = app.quick_open_geometry().body.unwrap();
+	let preview = &mut app.interaction.overlays.quick_open.preview;
+	let options = &preview.request.as_ref().unwrap().options;
+	let partial = crate::layout::LayoutEngine::new().layout_prefix_cancellable(
+		&markview_commonmark::parse(source).document,
+		options,
+		&Default::default(),
+		body.h,
+		|| false,
+	);
+	// The displayed preview still has its placeholder when the worker finishes.
+	preview.complete(partial, body, false);
+	preview.pending = true;
+	preview.worker.wait_for_final_publication();
+
+	let doc = picker_doc(&app);
+	let block = &doc.snapshot.blocks[0];
+	let rect = block
+		.draws()
+		.find_map(|(_, draw, _)| match draw {
+			crate::layout::Draw::Image { src, rect, .. } if src.is_empty() => {
+				Some(rect)
+			}
+			_ => None,
+		})
+		.expect("partial layout contains the pending image");
+	let point = (
+		doc.body().x + rect.x + rect.w / 2.0,
+		doc.body().y + block.y + rect.y + rect.h / 2.0,
+	);
+	assert!(doc.body().contains(point.0, point.1));
+	app.interaction.pointer.move_to(point);
+	app.pointer_pressed();
+	app.pointer_released();
+	assert!(app.interaction.overlays.quick_open.open());
+	assert!(app.interaction.overlays.quick_open.preview.pending);
+	settle(&mut app, &events, preview_has_decoded_images);
+}
+
+#[test]
+fn clicking_a_preview_after_a_save_waits_for_the_new_document() {
+	let dir = TestDir::new();
+	let path = dir.path().join("article.md");
+	fs::write(&path, "[Open another file](destination.md)").unwrap();
+	fs::write(dir.path().join("destination.md"), "# Destination").unwrap();
+	image::RgbaImage::new(20, 20)
+		.save(dir.path().join("photo.png"))
+		.unwrap();
 	let (mut app, events) = setup(dir.path());
 	query(&mut app, &events, "article");
 	settle(&mut app, &events, |app| {
@@ -1234,35 +1273,24 @@ fn unregistered_image_in_partial_preview_waits_for_its_resource() {
 			.document
 			.is_some()
 	});
-	assert!(app.interaction.overlays.quick_open.preview.pending);
 	let doc = picker_doc(&app);
-	let (block_y, rect) = doc
-		.snapshot
-		.blocks
-		.iter()
-		.find_map(|block| {
-			block.draws().find_map(|(_, d, _)| match d {
-				crate::layout::Draw::Image { src, rect, .. }
-					if src.is_empty() =>
-				{
-					Some((block.y, rect))
-				}
-				_ => None,
-			})
-		})
-		.expect("first publication contains the pending image");
-	let point = (
-		doc.body().x + rect.x + rect.w / 2.0,
-		doc.body().y + block_y + rect.y + rect.h / 2.0,
-	);
-	assert!(doc.body().contains(point.0, point.1));
-	app.interaction.pointer.move_to(point);
+	let block = &doc.snapshot.blocks[0];
+	let (_, link) = block.links().next().unwrap();
+	let body = doc.body();
+	app.interaction.pointer.move_to((
+		body.x + link.x + link.w / 2.0,
+		body.y + block.y + link.y + link.h / 2.0,
+	));
+	fs::write(&path, "![](photo.png)\n\nUpdated document.").unwrap();
 	app.pointer_pressed();
 	app.pointer_released();
-	assert!(app.interaction.overlays.quick_open.open());
-	settle(&mut app, &events, |app| {
-		!picker_doc(app).snapshot.images.decoded().is_empty()
-	});
+	let picker = &app.interaction.overlays.quick_open;
+	assert!(picker.open());
+	assert!(picker.preview.pending);
+	assert!(picker.preview.document.is_none());
+	settle(&mut app, &events, preview_has_decoded_images);
+	assert!(text(&app).contains("Updated document."));
+	assert!(app.readers.session.path.is_none());
 }
 
 #[test]
