@@ -50,7 +50,7 @@ scoop install extras/markview # Scoop
 **Windows / macOS / Linux — Cargo**
 
 ```sh
-cargo install --git https://github.com/szdytom/markview --tag v0.5.2 --locked markview
+cargo install --git https://github.com/szdytom/markview --tag v0.6.0 --locked markview
 ```
 
 **Arch Linux — [AUR](https://aur.archlinux.org/packages/markview-bin)**

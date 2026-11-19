@@ -21,6 +21,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+## 0.6.0 - 2026-11-19
+
+This release focuses on interactive previews for footnotes, links, and local files, while lowering memory use, adding native ARM64 Linux packages, and introducing portable mode on Windows and Linux. We’re proud to ship with Comrak 1.0.0 and congratulate @kivikakk on reaching this milestone.
+
 ### Added
 
 - Support portable mode on Windows and Linux with `markview-portable-marker.txt` beside the executable, keeping settings and application data in a sibling `data/` directory; Windows ZIPs include `enable-portable.bat` to create the marker (#98).

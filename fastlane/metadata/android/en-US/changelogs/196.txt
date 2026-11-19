@@ -1,0 +1,1 @@
+Long-press footnotes, links to local documents or images, and files in the sidebar to preview them. Choose preview sizes in Settings. The reader adds the Qi Baishi, Mondrian, and Van Gogh themes, supports Obsidian block links, and uses less memory.

@@ -52,7 +52,7 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "0.5.2"
+version = "0.6.0"
 edition = "2024"
 # Minimum supported toolchain for the workspace.
 rust-version = "1.100.0"
@@ -64,7 +64,7 @@ documentation = "https://github.com/szdytom/markview/tree/main/docs"
 
 [workspace.metadata.android]
 # Increment for every tagged release; the published `v0.5.2` APK used 195.
-version-code = 195
+version-code = 196
 rust-version = "1.100.0"
 java-version = "17"
 build-tools = "35.0.0"
