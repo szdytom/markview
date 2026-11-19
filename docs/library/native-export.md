@@ -68,7 +68,10 @@ parsing.
 Editors need the effective template's font requirements, including families that
 have no download source. `markview fonts catalog --destination ui|pdf` reports
 those requirements as JSON, with template choices, family names, licenses and
-source metadata. Use `--style ID` or `--file FILE.mvss.toml` to select a template;
+source metadata. Template choices are filtered for the requested destination;
+installed templates include a `path` so editors can load their MVSS source into
+the preview engine. Bundled templates use their IDs without a file path.
+Use `--style ID` or `--file FILE.mvss.toml` to select a template;
 custom files layer over the destination defaults and any selected named style.
 This is distinct from `fonts list`, which reports declared downloadable families
 and their local availability.

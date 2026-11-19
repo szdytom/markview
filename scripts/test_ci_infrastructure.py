@@ -64,6 +64,7 @@ class CiInfrastructureTest(unittest.TestCase):
             (tools / name).symlink_to(stub)
         self.env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"],
                         RUNNER_TEMP=str(self.directory), CI_TEST_TRACE=str(self.trace))
+        self.env.pop("MARKVIEW_APT_SNAPSHOT", None)
 
     def run_script(self, script, *args, failures=None):
         self.env["CI_TEST_FAILURES"] = json.dumps(failures or {})
@@ -104,6 +105,21 @@ class CiInfrastructureTest(unittest.TestCase):
         self.assertEqual(result.returncode, 73)
         self.assertEqual(len(self.calls("apt-get:update")), 4)
         self.assertEqual(self.calls("apt-get:install"), [])
+
+    def test_pinned_apt_install_uses_the_signed_snapshot_for_both_phases(self):
+        self.env["MARKVIEW_APT_SNAPSHOT"] = "20261116T000000Z"
+        package = "mesa-vulkan-drivers=25.2.8-0ubuntu0.24.04.4"
+        result = self.run_script("scripts/ci_install_packages.sh", package)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        update, = self.calls("apt-get:update")
+        install, = self.calls("apt-get:install")
+        self.assertEqual(update["sources"], install["sources"])
+        source = update["sources"]["ubuntu.sources"]
+        self.assertIn("https://snapshot.ubuntu.com/ubuntu/20261116T000000Z/", source)
+        self.assertIn("Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg", source)
+        for call in (update, install):
+            self.assertIn("Dir::Etc::sourcelist=/dev/null", call["args"])
+        self.assertEqual(install["args"][-4:], ["install", "-y", "--allow-downgrades", package])
 
     def test_golden_runner_never_updates_in_ci_and_propagates_failures(self):
         self.env.update(VK_DRIVER_FILES="test-driver", MARKVIEW_UPDATE_RENDER_GOLDENS="1")

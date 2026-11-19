@@ -546,7 +546,7 @@ test("reading options and templates update the existing viewer, including code w
   await publish(page, {
     ...message,
     version: 3,
-    template: "custom",
+    template: "installed-theme",
     stylesheet: custom,
   });
   await rendered(page, 3);

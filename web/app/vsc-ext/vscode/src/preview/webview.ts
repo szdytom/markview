@@ -170,7 +170,9 @@ async function update(message: DocumentMessage, ticket: number) {
     if (message.stylesheet)
       viewer.registerStylesheet("vscode-custom", message.stylesheet);
     const base =
-      message.template && !["default", "custom"].includes(message.template)
+      !message.stylesheet &&
+      message.template &&
+      !["default", "custom"].includes(message.template)
         ? `bundled:${message.template}`
         : `bundled:${message.theme}`;
     viewer.setStylesheets([
