@@ -24,6 +24,30 @@ impl Loop for WindowLoop {
 }
 
 #[test]
+fn explicit_quit_exits_a_directly_launched_reader() {
+	struct QuitLoop(Cell<bool>);
+	impl Loop for QuitLoop {
+		fn exit(&self) {
+			self.0.set(true);
+		}
+	}
+	let mut app = App::new(
+		LaunchOptions {
+			mode: Mode::Smoke,
+			options: crate::test_support::options(),
+			..Default::default()
+		},
+		Proxy,
+	);
+	app.args.mode = Mode::Window;
+	app.native_events.launch.finish();
+	app.interaction.pointer.set_modifiers(ModifiersState::META);
+	let event_loop = QuitLoop(Cell::new(false));
+	app.dispatch_key(&event_loop, &Key::Character("q".into()), false);
+	assert!(event_loop.0.get());
+}
+
+#[test]
 fn tab_dispatch_promotes_pending_and_visible_hover_hints_immediately() {
 	let mut shown = Vec::new();
 	for visible in [false, true] {

@@ -634,6 +634,7 @@ impl<P> App<P> {
 	pub(super) fn flush_session(&mut self) {
 		self.persistence.deadline = None;
 		if !self.persistence.initialized
+			|| (self.frame.closed && !self.launched_directly())
 			|| !self.preferences.values.restore_session
 			|| !self.owns_session()
 		{
@@ -713,6 +714,7 @@ impl<P: super::SendEvent> App<P> {
 	}
 	pub(super) fn session_tick(&mut self, now: Instant) {
 		if !self.persistence.initialized
+			|| (self.frame.closed && !self.launched_directly())
 			|| !self.preferences.values.restore_session
 			|| !self.owns_session()
 		{

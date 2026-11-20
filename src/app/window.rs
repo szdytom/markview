@@ -75,6 +75,21 @@ impl Loop for &dyn ActiveEventLoop {
 }
 
 impl<P: super::SendEvent> App<P> {
+	pub(super) fn window_action(
+		&mut self,
+		event_loop: &impl Loop,
+		caption: Caption,
+	) {
+		if markview_platform::supports_windowless_reader()
+			&& self.args.mode == Mode::Window
+			&& caption == Caption::Close
+		{
+			self.close_window(event_loop);
+		} else {
+			event_loop.window_action(self.window.as_deref(), caption);
+		}
+	}
+
 	pub(super) fn android_back(&mut self) {
 		if self.dismiss_touch_preview() {
 			return;
@@ -270,7 +285,7 @@ impl<P: super::SendEvent> App<P> {
 			}
 		}
 		if let Some(super::gestures::TouchAction::Caption(caption)) = action {
-			event_loop.window_action(self.window.as_deref(), caption);
+			self.window_action(event_loop, caption);
 		}
 	}
 
@@ -825,7 +840,7 @@ impl<P: super::SendEvent> App<P> {
 		event: &WindowEvent,
 	) -> bool {
 		match event {
-			WindowEvent::CloseRequested => event_loop.exit(),
+			WindowEvent::CloseRequested => self.close_window(event_loop),
 			WindowEvent::Moved(_) => {
 				self.frame.last_click = None;
 				self.sync_refresh_rate();

@@ -455,6 +455,14 @@ pub(super) struct Browser {
 }
 
 impl Browser {
+	pub(super) fn close_workspace(&mut self) {
+		let start = std::mem::take(&mut self.start);
+		let generation = self.generation.clone();
+		*self = Self::default();
+		self.start = start;
+		self.generation = generation;
+	}
+
 	pub fn file_search_available(&self) -> bool {
 		self.root().is_some() || self.start.has_files()
 	}

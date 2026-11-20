@@ -5,8 +5,11 @@ use anyhow::Result;
 use winit::event_loop::EventLoop;
 use winit::event_loop::run_on_demand::EventLoopExtRunOnDemand;
 
-pub(super) fn install(proxy: super::EventProxy) {
-	markview_platform::install_events(move |event| {
+pub(super) fn install(
+	proxy: super::EventProxy,
+	launch: markview_platform::ReaderLaunch,
+) {
+	markview_platform::install_reader_events(launch, move |event| {
 		proxy.send(super::native_event(event))
 	});
 }
@@ -17,10 +20,13 @@ pub(super) fn forward_pending(remote: Remote) -> Result<()> {
 		return Ok(());
 	};
 	let (sender, events) = std::sync::mpsc::channel();
-	install(super::EventProxy {
-		sender,
-		wake: event_loop.create_proxy(),
-	});
+	install(
+		super::EventProxy {
+			sender,
+			wake: event_loop.create_proxy(),
+		},
+		Default::default(),
+	);
 	let mut pending = ForwardPending {
 		remote,
 		events: Some(events),
