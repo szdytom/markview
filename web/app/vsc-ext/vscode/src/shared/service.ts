@@ -69,34 +69,31 @@ export class Services extends FontClient implements vscode.Disposable {
   readingTemplate(uri?: vscode.Uri): Promise<Template> {
     return this.template("ui", uri);
   }
-  async previewStylesheet(template: Template): Promise<string | undefined> {
-    const file = template.path;
-    return file ? readFile(file, "utf8") : undefined;
+  async previewStylesheet(
+    template: Template,
+    templates: Template[] = [],
+  ): Promise<string | undefined> {
+    if (!template.path && template.id === "default") return;
+    const file =
+      template.path ?? templates.find(({ id }) => id === template.id)?.path;
+    if (!file) return;
+    this.templates.watch(file);
+    return readFile(file, "utf8");
   }
   async pickTemplate(destination = "pdf"): Promise<Template | undefined> {
     const { templates } = await this.catalog(undefined, destination);
     const ui = destination === "ui";
-    const bundled = [
-      "light",
-      "dark",
-      "celadon",
-      "blueprint",
-      "rosewood",
-      "8-bit",
-    ];
     const choice = await vscode.window.showQuickPick(
       [
         {
           label: ui ? "跟随 VS Code 主题" : "默认导出样式",
           template: { id: "default", name: "Default" } as Template,
         },
-        ...templates
-          .filter((template) => !ui || bundled.includes(template.id))
-          .map((template) => ({
-            label: template.name,
-            description: template.id,
-            template,
-          })),
+        ...templates.map((template) => ({
+          label: template.name,
+          description: template.id,
+          template,
+        })),
         { label: "自定义 .mvss.toml…", template: undefined },
       ],
       { title: ui ? "选择阅读模板" : "选择导出模板" },

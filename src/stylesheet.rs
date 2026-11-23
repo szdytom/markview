@@ -4,6 +4,7 @@ use markview_layout::style::{
 	CjkType, MediaContext, StyleTarget, Stylesheet, StylesheetSource,
 };
 use std::{
+	borrow::Cow,
 	fs,
 	io::Write,
 	path::{Path, PathBuf},
@@ -202,10 +203,25 @@ fn load_over(
 pub struct Entry {
 	pub id: String,
 	pub name: String,
-	pub source: String,
+	pub source: Source,
 	pub error: Option<String>,
 	/// Font families the sheet offers to download, in declaration order.
 	pub font_families: Vec<markview_layout::style::FontFamily>,
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Source {
+	Bundled,
+	File(PathBuf),
+	Unavailable,
+}
+impl Source {
+	pub fn label<'a>(&'a self, bundled: &'a str) -> Cow<'a, str> {
+		match self {
+			Self::Bundled => Cow::Borrowed(bundled),
+			Self::File(path) => path.to_string_lossy(),
+			Self::Unavailable => Cow::Borrowed(""),
+		}
+	}
 }
 fn read_rules(id: &str, dir: Option<&Path>) -> Result<Arc<StylesheetSource>> {
 	validate_id(id)?;
@@ -295,12 +311,11 @@ pub fn catalog_for(
 				result.err().map(|e| format!("{e:#}"))
 			};
 			let source = if StylesheetSource::named_rules(&id).is_some() {
-				"Bundled".into()
+				Source::Bundled
 			} else {
-				dir.map(|p| {
-					p.join(format!("{id}{SUFFIX}")).display().to_string()
+				dir.map_or(Source::Unavailable, |dir| {
+					Source::File(dir.join(format!("{id}{SUFFIX}")))
 				})
-				.unwrap_or_default()
 			};
 			Some(Entry {
 				id,
@@ -652,6 +667,25 @@ mod target_tests {
 			dir.join(format!("{id}{SUFFIX}")),
 			format!("format_version=3\nversion=1\n{targets}\n[[rule]]\nwhen=['body']\ncolor='#123456'"),
 		).unwrap();
+	}
+
+	#[test]
+	fn catalog_sources_distinguish_bundled_files_and_missing_directories() {
+		let dir = crate::test_support::TestDir::new();
+		write_style(dir.path(), "local", "targets=['ui']");
+		let entries = catalog(Some(dir.path()), None);
+		let source =
+			|id| &entries.iter().find(|entry| entry.id == id).unwrap().source;
+		assert_eq!(source("light"), &Source::Bundled);
+		assert_eq!(
+			source("local"),
+			&Source::File(dir.path().join("local.mvss.toml"))
+		);
+
+		let entries = catalog(None, Some(&["local".into()]));
+		let missing = entries.iter().find(|entry| entry.id == "local").unwrap();
+		assert_eq!(missing.source, Source::Unavailable);
+		assert!(missing.error.is_some());
 	}
 
 	#[test]

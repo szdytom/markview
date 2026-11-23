@@ -523,16 +523,26 @@ fn effective(
 	)?;
 	Ok((sheet, target))
 }
+fn template_catalog(
+	dir: Option<&Path>,
+	target: StyleTarget,
+) -> Vec<serde_json::Value> {
+	crate::stylesheet::catalog_for(dir, None, target)
+		.into_iter()
+		.filter(|entry| entry.error.is_none())
+		.map(|entry| {
+			let mut template = json!({"id": entry.id, "name": entry.name});
+			if let crate::stylesheet::Source::File(path) = entry.source {
+				template["path"] = path.to_string_lossy().into_owned().into();
+			}
+			template
+		})
+		.collect()
+}
+
 fn report_catalog(sheet: &Stylesheet, target: StyleTarget) {
-	let templates: Vec<_> = crate::stylesheet::catalog_for(
-		crate::stylesheet::directory().as_deref(),
-		None,
-		target,
-	)
-	.into_iter()
-	.filter(|entry| entry.error.is_none())
-	.map(|entry| json!({"id":entry.id, "name":entry.name}))
-	.collect();
+	let templates =
+		template_catalog(crate::stylesheet::directory().as_deref(), target);
 
 	let mut definitions: Vec<_> = sheet
 		.fontdefs
@@ -593,6 +603,27 @@ fn report_catalog(sheet: &Stylesheet, target: StyleTarget) {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn template_choices_preserve_targets_and_installed_paths() {
+		let dir = crate::test_support::TestDir::new();
+		let file = dir.path().join("local.mvss.toml");
+		std::fs::write(&file, "format_version=3\nversion=1\ntargets=['ui']")
+			.unwrap();
+		let reader = template_catalog(Some(dir.path()), StyleTarget::Ui);
+		let installed =
+			reader.iter().find(|entry| entry["id"] == "local").unwrap();
+		assert_eq!(installed["path"], file.to_str().unwrap());
+		for id in ["qibaishi", "mondrian", "vangogh"] {
+			let bundled =
+				reader.iter().find(|entry| entry["id"] == id).unwrap();
+			assert!(bundled.get("path").is_none());
+		}
+		assert!(!reader.iter().any(|entry| entry["id"] == "print"));
+		let paper = template_catalog(Some(dir.path()), StyleTarget::Pdf);
+		assert!(!paper.iter().any(|entry| entry["id"] == "local"));
+		assert!(paper.iter().any(|entry| entry["id"] == "print"));
+	}
 
 	fn download_command(dry_run: bool) -> FontsCommand {
 		FontsCommand::Download {

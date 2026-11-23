@@ -56,7 +56,9 @@ fn run_stylesheet_command(args: &LaunchOptions) -> Result<bool> {
 				.map_or_else(|| entry.name, |error| format!("ERROR: {error}"));
 			crate::logging::report(format_args!(
 				"{}\t{}\t{}\n",
-				entry.id, status, entry.source
+				entry.id,
+				status,
+				entry.source.label("Bundled")
 			));
 		}
 		return Ok(true);

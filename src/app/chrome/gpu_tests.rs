@@ -212,12 +212,16 @@ fn settings_and_selection_frame() -> Result<()> {
 				crate::stylesheet::catalog(None, settings.style.as_deref());
 			let paper = entries.iter_mut().find(|e| e.id == "paper").unwrap();
 			paper.name = "纸与墨".into();
-			paper.source = "/example/styles/paper.mvss.toml".into();
+			paper.source = crate::stylesheet::Source::File(
+				"/example/styles/paper.mvss.toml".into(),
+			);
 			paper.error = None;
 			entries.push(crate::stylesheet::Entry {
 				id: "invalid".into(),
 				name: "Invalid stylesheet".into(),
-				source: "/example/styles/invalid.mvss.toml".into(),
+				source: crate::stylesheet::Source::File(
+					"/example/styles/invalid.mvss.toml".into(),
+				),
 				error: Some("em.font: must not be empty".into()),
 				font_families: Vec::new(),
 			});
@@ -1618,7 +1622,9 @@ fn redesigned_chrome_frames() -> Result<()> {
 			entries.push(crate::stylesheet::Entry {
 				id: id.into(),
 				name: name.into(),
-				source: format!("/example/styles/{id}.mvss.toml"),
+				source: crate::stylesheet::Source::File(
+					format!("/example/styles/{id}.mvss.toml").into(),
+				),
 				error: None,
 				font_families: Vec::new(),
 			});

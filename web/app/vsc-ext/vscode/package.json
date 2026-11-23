@@ -139,17 +139,8 @@
         },
         "markview.previewTemplate": {
           "type": "string",
-          "enum": [
-            "default",
-            "light",
-            "dark",
-            "celadon",
-            "blueprint",
-            "rosewood",
-            "8-bit"
-          ],
           "default": "default",
-          "description": "Bundled reading template. Default follows the VS Code theme; previewStyleFile takes precedence.",
+          "description": "Reading template ID from the engine catalog. Use Markview: 选择阅读模板… to browse available templates. Default follows the VS Code theme; previewStyleFile takes precedence.",
           "scope": "resource"
         },
         "markview.fontSize": {

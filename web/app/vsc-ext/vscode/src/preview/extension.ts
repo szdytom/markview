@@ -72,10 +72,11 @@ export function activate(
         emojiFonts = emoji;
       }
       fontPaths ??= (async () => {
-        const [catalog, stylesheet] = await Promise.all([
-          services.catalog(template, "ui"),
-          services.previewStylesheet(template),
-        ]);
+        const catalog = await services.catalog(template, "ui");
+        const stylesheet = await services.previewStylesheet(
+          template,
+          catalog.templates,
+        );
         if (!emoji)
           catalog.definitions = catalog.definitions.filter(
             ({ id }) => id !== "emoji",
