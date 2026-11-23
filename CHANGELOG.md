@@ -21,6 +21,11 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Fixed
+
+- Use the first definition for duplicate footnotes, find definitions nested inside other footnotes, and omit notes referenced only by unused notes with Comrak 1.1.0.
+- Recognize GitHub alert markers with zero to three spaces or a tab after `>`.
+
 ## 0.6.0 - 2026-11-19
 
 This release focuses on interactive previews for footnotes, links, and local files, while lowering memory use, adding native ARM64 Linux packages, and introducing portable mode on Windows and Linux. We’re proud to ship with Comrak 1.0.0 and congratulate @kivikakk on reaching this milestone.

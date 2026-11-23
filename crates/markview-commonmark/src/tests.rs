@@ -1097,6 +1097,19 @@ fn prefix_parse_resolves_definitions_that_follow_the_cut() {
 }
 
 #[test]
+fn prefix_parse_declines_when_a_nested_footnote_follows_the_cut() {
+	let source: Arc<str> = Arc::from(
+		"See[^inner].\n\nMore.\n\n[^outer]: Outer.\n\n    [^inner]: Inner.\n",
+	);
+	let full = parse(source.clone());
+	let BlockKind::Paragraph(text) = full.blocks()[0].kind() else {
+		panic!("expected a paragraph")
+	};
+	assert_eq!(plain_text(text), "See[1].");
+	assert!(parse_prefix(&source, 3).is_none());
+}
+
+#[test]
 fn prefix_parse_declines_when_an_open_fence_swallows_definitions() {
 	// The reference before the stray fence needs the definition after it. The
 	// bare prefix sees an open fence and a literal `[baz]`, which the full
@@ -1670,6 +1683,26 @@ fn a_footnote_defined_in_details_has_no_disclosure_chain() {
 	);
 	// The definition is labelled by its index, as the reference is.
 	assert!(doc.details_enclosing("fn:1").is_empty());
+}
+
+#[test]
+fn duplicate_footnotes_in_a_markdown_snippet_use_the_first_definition() {
+	let doc = parse(
+		"> <svg>\n> <rect/>\n> </svg>\n> # Body[^n]\n> [^n]: First.\n> [^N]: Second[^unused].\n> [^unused]: Unused.\n",
+	);
+	let BlockKind::Quote { blocks, .. } = doc.blocks()[0].kind() else {
+		panic!("expected a quote")
+	};
+	assert!(
+		matches!(blocks[1].kind(), BlockKind::Heading { text, .. } if plain_text(text) == "Body[1]")
+	);
+	assert_eq!(doc.blocks().len(), 2);
+	let BlockKind::Footnote { blocks, .. } = doc.blocks()[1].kind() else {
+		panic!("expected a footnote")
+	};
+	assert!(
+		matches!(blocks[0].kind(), BlockKind::Paragraph(text) if plain_text(text) == "First.")
+	);
 }
 
 #[test]
@@ -2771,15 +2804,18 @@ fn callouts_nest_and_keep_inline_markup_in_the_body() {
 
 #[test]
 fn gfm_alert_types_keep_their_distinct_kinds_and_titles() {
-	for (title, kind) in [
+	for ((title, kind), indent) in [
 		("Note", CalloutKind::Note),
 		("Tip", CalloutKind::Tip),
 		("Important", CalloutKind::Important),
 		("Warning", CalloutKind::Warning),
 		("Caution", CalloutKind::Caution),
-	] {
+	]
+	.into_iter()
+	.zip([" ", "", "  ", "   ", "\t"])
+	{
 		let source =
-			format!("> [!{}]\n> **body**\n", title.to_ascii_uppercase());
+			format!(">{indent}[!{}]\n> **body**\n", title.to_ascii_uppercase());
 		let doc = parse(source.clone());
 		assert_eq!(doc.map.validate(&source, &doc.document), Ok(()));
 		let (callout, blocks) = callout_of(&doc.blocks()[0]);

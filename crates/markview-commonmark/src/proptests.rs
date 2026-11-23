@@ -116,14 +116,16 @@ fn render(sections: &[(bool, String)], newline: &str) -> String {
 
 proptest! {
 	#[test]
-	fn footnote_records_use_first_reference_numbers_and_last_case_folded_definitions(
+	fn footnote_records_use_first_reference_numbers_and_first_case_folded_definitions(
 		definitions in prop::collection::vec((0usize..4, any::<bool>()), 0..10),
 		references in prop::collection::vec((0usize..6, any::<bool>()), 1..12),
 		newline in prop::sample::select(vec!["\n", "\r\n", "\r"]),
 	) {
 		let label = |id, upper| format!("{}{id}", if upper { "N" } else { "n" });
 		let mut bodies = [const { None }; 4];
-		for (index, &(id, _)) in definitions.iter().enumerate() { bodies[id] = Some(format!("definition{index}")); }
+		for (index, &(id, _)) in definitions.iter().enumerate() {
+			bodies[id].get_or_insert_with(|| format!("definition{index}"));
+		}
 		let mut order = Vec::new();
 		let mut expected_text = Vec::new();
 		let mut expected_refs = Vec::new();

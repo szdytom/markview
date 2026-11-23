@@ -291,6 +291,9 @@ fn prefix_blocks(
 	if !bare.contains('[') {
 		return super::parse::parse_complete_prefix(bare.to_owned(), dialect);
 	}
+	if bare.contains("[^") && has_nested_footnote_definition(&source[end..]) {
+		return None;
+	}
 	let definitions = missing_definitions(source, bare);
 	if definitions.is_empty() {
 		return super::parse::parse_complete_prefix(bare.to_owned(), dialect);
@@ -311,12 +314,24 @@ fn prefix_blocks(
 	Some(parsed)
 }
 
+/// The flat definition scan cannot reproduce footnotes in unread containers.
+fn has_nested_footnote_definition(source: &str) -> bool {
+	source.split(['\r', '\n']).any(|line| {
+		let Some((head, _)) = line.rsplit_once("]:") else {
+			return false;
+		};
+		let Some((before, label)) = head.split_once("[^") else {
+			return false;
+		};
+		before.len() > 3
+			|| !before.trim_matches(' ').is_empty()
+			|| label.contains("[^")
+	})
+}
+
 /// The definitions of `source` that `bare` does not already hold.
 ///
-/// A note inside the prefix resolves natively, and appending a second copy of
-/// it changes how the parser reads the prefix: comrak keeps a repeated footnote
-/// definition where a lone unreferenced one disappears, so the copy would add a
-/// block the document does not have.
+/// A note inside `bare` resolves natively. Only missing notes need placeholders.
 ///
 /// A *reference* definition is never dropped this way, because the prefix's copy
 /// need not be one: `[x]: /a "unterminated` at the cut reads as a paragraph,

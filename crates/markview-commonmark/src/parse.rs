@@ -1361,8 +1361,10 @@ impl Reader<'_> {
 		};
 		let block = self.make(anchors, kind, source, fields, covers);
 		if let NodeValue::FootnoteDefinition(f) = &data.value {
-			// Snippet-only definitions also belong at the document's end.
-			self.footnote_blocks.insert(note_key(&f.name), block);
+			// Snippet parses retain duplicates. Keep the first definition.
+			self.footnote_blocks
+				.entry(note_key(&f.name))
+				.or_insert(block);
 			Child::Skip
 		} else {
 			Child::Block(block)
@@ -1502,11 +1504,13 @@ impl Reader<'_> {
 		}
 		// A note keeps the number the document gave it, so a reference inside
 		// a snippet and the note block outside it still agree.
+		// Comrak leaves references inside duplicate definitions unnumbered.
 		let mut next_footnote =
 			self.footnotes.values().copied().max().unwrap_or(0) + 1;
 		for node in root.descendants() {
 			if let NodeValue::FootnoteReference(f) =
 				&mut node.data.borrow_mut().value
+				&& f.ix != 0
 			{
 				f.ix = *self.footnotes.entry(note_key(&f.name)).or_insert_with(
 					|| {

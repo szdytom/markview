@@ -114,7 +114,7 @@ fn adjacent_details_have_their_own_source_ranges_and_open_states() {
 fn details_footnotes_appear_once_at_the_end_of_the_document() {
 	let sources = [
 		(
-			"|**bold** __ita__ ~~gone~~ `codeT|\n---\n<details open>\n\n[^1]: a footnote body\nsee [^1] and the text\n\nte\n</details>\n& C",
+			"|**bold** __ita__ ~~gone~~ `codeT|\n---\n<details open>\n\n[^1]: a footnote body\n\nsee [^1] and the text\n\nte\n</details>\n& C",
 			vec!["a footnote body"],
 		),
 		(
@@ -123,7 +123,7 @@ fn details_footnotes_appear_once_at_the_end_of_the_document() {
 		),
 		(
 			"Outside[^n]\n\n[^n]: First.\n\n<details>\n\n[^n]: Last.\n\n</details>\n",
-			vec!["Last."],
+			vec!["First."],
 		),
 		(
 			"<details>\n\nBody[^n]\n\n[^n]: The note.\n\n</details>\n",
@@ -243,21 +243,21 @@ fn notes_discovered_in_details_share_document_numbering() {
 }
 
 #[test]
-fn a_note_can_retain_its_source_label_after_its_reference_is_removed() {
-	let doc = markview_commonmark::parse(
-		"[^unused]: hi[^x]\n\n[^x]: note[^y]\n\n[^y]: end\n",
-	);
+fn only_reachable_footnotes_are_numbered_and_displayed() {
+	let definitions = "[^unused]: hi[^x]\n\n[^x]: note[^y]\n\n[^y]: end\n";
+	assert!(markview_commonmark::parse(definitions).blocks().is_empty());
+	let doc = markview_commonmark::parse(format!("Text[^x].\n\n{definitions}"));
 	let labels: Vec<_> = doc
 		.blocks()
 		.iter()
-		.map(|block| {
-			let BlockKind::Footnote { id, number, .. } = &block.kind() else {
-				panic!("expected a note");
-			};
-			(id.as_str(), *number)
+		.filter_map(|block| match block.kind() {
+			BlockKind::Footnote { id, number, .. } => {
+				Some((id.as_str(), *number))
+			}
+			_ => None,
 		})
 		.collect();
-	assert_eq!(labels, [("x", 0), ("y", 2)]);
+	assert_eq!(labels, [("x", 1), ("y", 2)]);
 }
 
 #[test]
@@ -460,12 +460,11 @@ fn footnote_refs(blocks: &[Block], out: &mut Vec<u32>) {
 
 #[test]
 fn case_folded_footnote_labels_share_one_number() {
-	// Comrak folds label case and keeps the later duplicate definition, so
-	// `[^n]` and `[^N]` are one note and the one inside the disclosure wins.
+	// `[^n]` and `[^N]` share the first definition and the same number.
 	let sources = [
 		(
 			"Outside[^n]\n\n[^N]: First.\n\n<details>\n\nBody[^n]\n\n[^n]: Second.\n\n</details>\n",
-			"Second.",
+			"First.",
 		),
 		("Outside[^n]\n\n[^N]: First.\n", "First."),
 		(
