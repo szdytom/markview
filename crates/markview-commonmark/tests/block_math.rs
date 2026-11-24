@@ -110,6 +110,28 @@ fn math_blocks_keep_markdown_literal_and_work_in_containers() {
 }
 
 #[test]
+fn math_fence_accepts_trailing_metadata() {
+	let parsed = parse("```math title=area\nA = w h\n```");
+	validate(&parsed);
+	assert_eq!(math(&parsed.blocks()[0]), "A = w h\n");
+}
+
+#[test]
+fn inline_math_preserves_newlines_and_matches_backtick_runs() {
+	for (source, expected) in [("$a\n+b$", "a\n+b"), ("$``a`b``$", "a`b")] {
+		let parsed = parse(source);
+		validate(&parsed);
+		let BlockKind::Paragraph(text) = parsed.blocks()[0].kind() else {
+			panic!("expected a paragraph");
+		};
+		assert_eq!(text.len(), 1);
+		assert!(
+			matches!(&text[0].kind, InlineKind::Math { latex, display: false } if latex == expected)
+		);
+	}
+}
+
+#[test]
 fn other_math_delimiters_still_work_when_block_mode_is_disabled() {
 	for math_dollars_block in [false, true] {
 		let dialect = Dialect {

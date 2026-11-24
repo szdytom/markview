@@ -23,8 +23,13 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
-- Use the first definition for duplicate footnotes, find definitions nested inside other footnotes, and omit notes referenced only by unused notes with Comrak 1.1.0.
+- Use the first definition for duplicate footnotes, find definitions nested inside other footnotes, and omit notes referenced only by unused notes.
 - Recognize GitHub alert markers with zero to three spaces or a tab after `>`.
+- Preserve line breaks in dollar-delimited math, match backtick runs in inline code math, and render `math` fences with trailing metadata as display math.
+
+### Security
+
+- Upgrade Comrak to 1.2.0 to fix quadratic parsing time for escaped pipes in table cells and certain automatic links ([GHSA-7f8r-4rh5-vr5h](https://github.com/kivikakk/comrak/security/advisories/GHSA-7f8r-4rh5-vr5h)).
 
 ## 0.6.0 - 2026-11-19
 

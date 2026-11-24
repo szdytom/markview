@@ -2351,7 +2351,8 @@ fn code_block_kind(
 	c: &comrak::nodes::NodeCodeBlock,
 	_source: &Range<usize>,
 ) -> BlockKind {
-	if c.info.split_whitespace().next() == Some("mermaid") {
+	let language = c.info.split_whitespace().next();
+	if language == Some("mermaid") {
 		BlockKind::Paragraph(vec![Inline {
 			link: None,
 			kind: InlineKind::Image(Box::new(crate::image::ImageSpec {
@@ -2371,7 +2372,7 @@ fn code_block_kind(
 			})),
 			style: markview_document::TextStyle::default(),
 		}])
-	} else if c.info.trim() == "math" {
+	} else if language == Some("math") {
 		BlockKind::Paragraph(vec![Inline {
 			link: None,
 			kind: InlineKind::Math {
