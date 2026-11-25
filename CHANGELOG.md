@@ -30,6 +30,8 @@ at the same level, without `[brackets]`.
 - Use the first definition for duplicate footnotes, find definitions nested inside other footnotes, and omit notes referenced only by unused notes.
 - Recognize GitHub alert markers with zero to three spaces or a tab after `>`.
 - Preserve line breaks in dollar-delimited math, match backtick runs in inline code math, and render `math` fences with trailing metadata as display math.
+- Keep the Ctrl+P preview at the end when the selected file reloads while its preview is still loading.
+- Keep the file sidebar's scroll position stable at the start of folder collapse animations.
 
 ### Security
 

@@ -1163,8 +1163,7 @@ fn folder_toggles_keep_a_visible_parent_in_place() {
 		let offset = list.content_height - list.viewport.h;
 		assert!(offset > 0.);
 		app.scroll_folder(offset);
-		let parent_rect = |app: &App<StubProxy>| {
-			let now = Instant::now();
+		let parent_rect = |app: &App<StubProxy>, now: Instant| {
 			let list = app.folder.list(app.folder_rect(), now);
 			let row = app
 				.folder
@@ -1174,13 +1173,13 @@ fn folder_toggles_keep_a_visible_parent_in_place() {
 				.unwrap();
 			list.slot_rect(row.slot)
 		};
-		let original = parent_rect(&app);
+		let original = parent_rect(&app, Instant::now());
 		for elapsed in [0, 40, 0, 80, 0, 180] {
 			app.action(Command::Chrome(ChromeCommand::FolderEntry(parent)));
-			app.folder.freeze_rows(Duration::from_millis(elapsed));
-			app.advance_drawers(Instant::now());
+			let now = app.folder.freeze_rows(Duration::from_millis(elapsed));
+			app.advance_drawers(now);
 			assert_eq!(app.folder.scroll.offset(), offset);
-			assert_eq!(parent_rect(&app), original);
+			assert_eq!(parent_rect(&app, now), original);
 			let button = app
 				.buttons()
 				.into_iter()
@@ -1192,16 +1191,16 @@ fn folder_toggles_keep_a_visible_parent_in_place() {
 			assert_eq!(button.rect.y, original.y);
 		}
 		app.advance_drawers(Instant::now() + Duration::from_secs(1));
-		assert_eq!(parent_rect(&app), original);
+		assert_eq!(parent_rect(&app, Instant::now()), original);
 
 		app.scroll_folder(10_000.);
 		let bottom = app.folder.scroll.offset();
 		app.action(Command::Chrome(ChromeCommand::FolderCollapseAll));
-		assert!((app.folder.scroll.offset() - bottom).abs() < 1.);
+		assert_eq!(app.folder.scroll.offset(), bottom);
 		let mut previous = bottom;
 		for elapsed in [40, 80] {
-			app.folder.freeze_rows(Duration::from_millis(elapsed));
-			app.advance_drawers(Instant::now());
+			let now = app.folder.freeze_rows(Duration::from_millis(elapsed));
+			app.advance_drawers(now);
 			let offset = app.folder.scroll.offset();
 			assert!(offset < previous && offset > 29. * 28.);
 			previous = offset;

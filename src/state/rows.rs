@@ -175,11 +175,11 @@ impl RowSlide {
 	}
 
 	#[cfg(test)]
-	pub(crate) fn freeze(&mut self, elapsed: Duration) {
+	pub(crate) fn freeze(&mut self, elapsed: Duration) -> Instant {
 		self.tween
 			.as_mut()
 			.expect("the row slide is animating")
-			.freeze(elapsed);
+			.freeze(elapsed)
 	}
 }
 

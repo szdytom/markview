@@ -284,7 +284,10 @@ impl<P: SendEvent> App<P> {
 			}
 			preview.serial = preview.serial.wrapping_add(1);
 		} else {
+			let follow_end = preview.follow_end
+				&& preview.request.as_ref().is_some_and(|r| r.path == path);
 			preview.clear();
+			preview.follow_end = follow_end;
 		}
 		let wake = self.proxy.clone();
 		let observed = Observed::new(path.clone(), move || {

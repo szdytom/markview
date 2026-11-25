@@ -1165,40 +1165,76 @@ fn down_during_preview_reflow_keeps_the_selected_file_and_text() {
 
 #[test]
 fn end_in_a_partial_preview_reaches_the_final_paragraph() {
+	check_end_in_a_partial_preview(false);
+}
+
+#[test]
+fn end_in_a_partial_preview_survives_reloading_the_selected_file() {
+	check_end_in_a_partial_preview(true);
+}
+
+fn check_end_in_a_partial_preview(reload: bool) {
 	let dir = TestDir::new();
-	fs::write(
-		dir.path().join("long.md"),
-		"A longer document.\n\n".repeat(3000) + "Final paragraph.",
-	)
-	.unwrap();
+	let path = dir.path().join("long.md");
+	let paragraphs = "A longer document.\n\n".repeat(80);
+	let source = format!("{paragraphs}Final paragraph.");
+	fs::write(&path, &source).unwrap();
 	let (mut app, events) = setup(dir.path());
+	let (send, jobs) = mpsc::channel();
+	let mut services = crate::services::Services::new(1);
+	services.handle.cpu = Arc::new(Held(send));
+	app.services = Arc::new(services);
 	query(&mut app, &events, "long");
-	settle(&mut app, &events, |app| {
-		app.interaction
-			.overlays
-			.quick_open
-			.preview
-			.document
-			.as_ref()
-			.is_some_and(|doc| doc.view().max_scroll() > doc.body().h)
-	});
-	let body = picker_doc(&app).body();
-	app.interaction
-		.pointer
-		.move_to((body.x + 24.0, body.y + 24.0));
-	app.pointer_pressed();
-	app.pointer_released();
-	assert!(app.interaction.overlays.quick_open.preview.pending);
+	let task = jobs.recv_timeout(Duration::from_secs(10)).unwrap();
+	let body = app.quick_open_geometry().body.unwrap();
+	let preview = &mut app.interaction.overlays.quick_open.preview;
+	let parsed = markview_commonmark::parse(source);
+	let partial = crate::layout::LayoutEngine::new()
+		.layout_prefix_cancellable(
+			&parsed.document,
+			&preview.request.as_ref().unwrap().options,
+			&Default::default(),
+			body.h * 3.0,
+			|| false,
+		)
+		.unwrap();
+	assert!(partial.blocks.len() < parsed.document.blocks().len());
+	preview.complete(Some(partial), body, false);
+	preview.pending = true;
+	preview.document.as_mut().unwrap().state.focused = true;
+	app.clear_input_focus();
 	assert!(app.quick_open_key(&Key::Named(NamedKey::End)));
 	app.advance_control_scroll(Instant::now() + Duration::from_secs(1));
-	assert_eq!(
-		picker_doc(&app).scroll.offset(),
-		picker_doc(&app).view().max_scroll()
-	);
-	settle(&mut app, &events, |app| {
-		!app.interaction.overlays.quick_open.preview.pending
-	});
-	assert!(text(&app).ends_with("Final paragraph."));
+	let partial_end = picker_doc(&app).view().max_scroll();
+	assert!(partial_end > 0.0);
+	assert_eq!(picker_doc(&app).scroll.offset(), partial_end);
+	task.run();
+	let final_text = if reload {
+		let preview = &app.interaction.overlays.quick_open.preview;
+		preview.worker.wait_for_final_publication();
+		let replacement = "Updated final paragraph.";
+		fs::write(path, format!("{paragraphs}{replacement}")).unwrap();
+		app.refresh_quick_open_preview();
+		assert!(
+			app.interaction
+				.overlays
+				.quick_open
+				.preview
+				.document
+				.is_none()
+		);
+		jobs.recv_timeout(Duration::from_secs(10)).unwrap().run();
+		replacement
+	} else {
+		"Final paragraph."
+	};
+	let worker = &app.interaction.overlays.quick_open.preview.worker;
+	worker.wait_for_final_publication();
+	let completion = worker.try_recv();
+	app.accept_quick_open_completion(completion, body);
+	assert!(!app.interaction.overlays.quick_open.preview.pending);
+	assert!(text(&app).ends_with(final_text));
+	assert!(picker_doc(&app).view().max_scroll() > partial_end);
 	assert_eq!(
 		picker_doc(&app).scroll.offset(),
 		picker_doc(&app).view().max_scroll()

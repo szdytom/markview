@@ -628,7 +628,7 @@ fn note_embed_wikilinks_refresh_when_a_closer_note_appears() {
 }
 
 #[test]
-fn note_embed_dependency_poll_lists_an_unchanged_directory_only_once() {
+fn note_embed_dependency_poll_reuses_supported_directory_metadata() {
 	let dir = crate::test_support::TestDir::new();
 	let root = dir.path();
 	let sub = root.join("sub");
@@ -646,23 +646,42 @@ fn note_embed_dependency_poll_lists_an_unchanged_directory_only_once() {
 	assert!(text(&prepared).contains("Section"));
 	let dependencies = &prepared.composition().unwrap().dependencies;
 	assert!(!dependencies.changed());
-	let stamp = file_stamp(root);
-	let entries =
-		markview_document::fingerprint(&workspace_entries(root, || false));
-	fs::write(root.join("output.pdf"), "unrelated export").unwrap();
-	assert_ne!(file_stamp(root), stamp);
-	assert_eq!(
-		markview_document::fingerprint(&workspace_entries(root, || false)),
-		entries
-	);
+	let output = root.join("output.pdf");
+	fs::write(&output, "unrelated export").unwrap();
+	let stamp = dependencies.directories[root].stamp.as_ref();
+	if let Some(stamp) = stamp {
+		*stamp.lock().unwrap() = file_version(&output).unwrap();
+	}
 
 	DIRECTORY_READS.with(|reads| reads.set(0));
-	assert!(!dependencies.changed());
-	assert_eq!(DIRECTORY_READS.with(|reads| reads.get()), 1);
-	for _ in 0..3 {
+	for _ in 0..4 {
 		assert!(!dependencies.changed());
 	}
-	assert_eq!(DIRECTORY_READS.with(|reads| reads.get()), 1);
+	let expected = if stamp.is_some() {
+		1
+	} else {
+		4 * dependencies.directories.len()
+	};
+	assert_eq!(DIRECTORY_READS.with(|reads| reads.get()), expected);
+}
+
+#[test]
+fn workspace_entries_are_checked_without_directory_metadata() {
+	let dir = crate::test_support::TestDir::new();
+	let root = dir.path();
+	let directory = DirectoryStamp {
+		stamp: None,
+		entries: markview_document::fingerprint(&workspace_entries(
+			root,
+			|| false,
+		)),
+	};
+	fs::write(root.join("output.pdf"), "unrelated export").unwrap();
+	assert!(!directory.changed(root));
+	let nested = root.join("topics");
+	fs::create_dir(&nested).unwrap();
+	fs::write(nested.join("Topic.md"), "# A new candidate").unwrap();
+	assert!(directory.changed(root));
 }
 
 #[test]
@@ -995,6 +1014,8 @@ fn note_embed_compound_paths_stay_inside_the_parent_container() {
 
 #[test]
 fn note_embed_invalidates_a_timestamp_preserving_atomic_replacement() {
+	use crate::watch::file_stamp;
+
 	let dir = crate::test_support::TestDir::new();
 	let root = dir.path();
 	let note = root.join("B.md");

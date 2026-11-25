@@ -239,9 +239,8 @@ impl<P: super::SendEvent> App<P> {
 					{
 						self.folder_view_changed();
 					}
-					self.folder.retarget_rows(&before, Instant::now());
 					self.folder.grab = None;
-					self.scroll_folder(0.);
+					self.animate_folder_rows(&before);
 					self.refresh_hover();
 					self.redraw();
 				}

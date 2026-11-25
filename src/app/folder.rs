@@ -586,8 +586,11 @@ impl Browser {
 	}
 
 	#[cfg(test)]
-	pub(super) fn freeze_rows(&mut self, elapsed: std::time::Duration) {
-		self.rows.freeze(elapsed);
+	pub(super) fn freeze_rows(
+		&mut self,
+		elapsed: std::time::Duration,
+	) -> Instant {
+		self.rows.freeze(elapsed)
 	}
 }
 
@@ -1272,14 +1275,24 @@ impl<P: SendEvent> App<P> {
 	}
 
 	pub(super) fn scroll_folder(&mut self, delta: f32) {
+		self.scroll_folder_at(delta, self.frame_now());
+	}
+
+	fn scroll_folder_at(&mut self, delta: f32, now: Instant) {
 		self.folder.show_scrollbar(Instant::now());
-		let list = self.folder.list(self.folder_rect(), self.frame_now());
+		let list = self.folder.list(self.folder_rect(), now);
 		self.folder.scroll.set_max(list.max_scroll());
 		self.folder
 			.scroll
 			.jump_to((list.scroll + delta).clamp(0., list.max_scroll()));
 		self.interaction.widgets.captured = None;
 		self.redraw();
+	}
+
+	pub(super) fn animate_folder_rows(&mut self, before: &[usize]) {
+		let now = Instant::now();
+		self.folder.retarget_rows(before, now);
+		self.scroll_folder_at(0.0, now);
 	}
 
 	/// A wheel step over the tree, eased like the document's own.
@@ -1334,8 +1347,7 @@ impl<P: SendEvent> App<P> {
 			if lazy {
 				self.folder_view_changed();
 			}
-			self.folder.retarget_rows(&before, Instant::now());
-			self.scroll_folder(0.);
+			self.animate_folder_rows(&before);
 		} else {
 			let path = entry.path.clone();
 			if self.folder_inset() == 0. {

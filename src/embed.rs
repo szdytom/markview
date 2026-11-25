@@ -2,14 +2,13 @@
 use crate::{
 	loaded::LoadedDocument,
 	security::{Origin, Security, Trust},
-	watch::{FileStamp, file_stamp},
 };
 use markview_commonmark::{Dialect, MarkdownParse};
 use markview_document::{
 	BlockId, Document, Link,
 	embed::{self, Expansion, Request, SourceId, Target},
 };
-use markview_platform::{FileVersion, file_version};
+use markview_platform::{FileVersion, directory_version, file_version};
 use std::{
 	collections::{BTreeMap, HashMap, HashSet},
 	fs,
@@ -30,7 +29,7 @@ pub(crate) struct Dependencies {
 
 #[derive(Debug)]
 struct DirectoryStamp {
-	stamp: Mutex<FileStamp>,
+	stamp: Option<Mutex<FileVersion>>,
 	entries: u64,
 }
 
@@ -68,18 +67,26 @@ impl Dependencies {
 
 impl DirectoryStamp {
 	fn changed(&self, path: &Path) -> bool {
-		let mut previous = self.stamp.lock().unwrap();
-		let current = file_stamp(path);
+		let Some(stamp) = &self.stamp else {
+			return self.entries_changed(path);
+		};
+		let mut previous = stamp.lock().unwrap();
+		let Some(current) = directory_version(path) else {
+			return self.entries_changed(path);
+		};
 		if *previous == current {
 			return false;
 		}
-		if markview_document::fingerprint(&workspace_entries(path, || false))
-			!= self.entries
-		{
+		if self.entries_changed(path) {
 			return true;
 		}
 		*previous = current;
 		false
+	}
+
+	fn entries_changed(&self, path: &Path) -> bool {
+		markview_document::fingerprint(&workspace_entries(path, || false))
+			!= self.entries
 	}
 }
 
@@ -518,7 +525,7 @@ impl Workspace {
 			if cancelled() {
 				return None;
 			}
-			let stamp = file_stamp(&path);
+			let stamp = directory_version(&path).map(Mutex::new);
 			let entries = workspace_entries(&path, cancelled);
 			if cancelled() {
 				return None;
@@ -526,7 +533,7 @@ impl Workspace {
 			directories.insert(
 				path,
 				DirectoryStamp {
-					stamp: Mutex::new(stamp),
+					stamp,
 					entries: markview_document::fingerprint(&entries),
 				},
 			);

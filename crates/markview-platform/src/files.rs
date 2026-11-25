@@ -80,6 +80,16 @@ pub fn file_version(path: &Path) -> Option<FileVersion> {
 	})
 }
 
+/// Metadata suitable for skipping an unchanged directory listing, where supported.
+pub fn directory_version(path: &Path) -> Option<FileVersion> {
+	// Windows directory metadata can stay unchanged when a child appears.
+	if cfg!(windows) {
+		None
+	} else {
+		file_version(path)
+	}
+}
+
 /// Whether two paths name the same file, including through symlinks and hard
 /// links. Metadata identity keeps this from opening a FIFO or device.
 pub fn same_file(first: &Path, second: &Path) -> bool {

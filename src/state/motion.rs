@@ -104,8 +104,10 @@ impl Tween {
 	}
 
 	#[cfg(test)]
-	pub(crate) fn freeze(&mut self, elapsed: Duration) {
-		self.frozen_at = Some(self.started + elapsed);
+	pub(crate) fn freeze(&mut self, elapsed: Duration) -> Instant {
+		let now = self.started + elapsed;
+		self.frozen_at = Some(now);
+		now
 	}
 }
 
