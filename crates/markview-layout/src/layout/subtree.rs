@@ -84,24 +84,18 @@ impl LayoutEngine {
 		if cancelled() {
 			return None;
 		}
-		let siblings = siblings(document, node);
-		let start = siblings
-			.iter()
-			.position(|block| std::ptr::eq(block, node))
-			.expect("the layout root must belong to the source document");
-		let level = match node.kind() {
-			BlockKind::Heading { level, .. } => *level,
-			_ => 0,
+		let roots = if matches!(node.kind(), BlockKind::Heading { .. }) {
+			crate::document::embed::section_prefix(document, node, 64)
+		} else {
+			let siblings = siblings(document, node);
+			let start = siblings
+				.iter()
+				.position(|block| std::ptr::eq(block, node))
+				.expect("the layout root must belong to the source document");
+			&siblings[start..(start + 64).min(siblings.len())]
 		};
-		let count = 1 + siblings[start + 1..].iter().take(63).take_while(|block| {
-			!cancelled() && !matches!(block.kind(), BlockKind::Heading { level: next, .. } if *next <= level)
-		}).count();
-		let layout = self.begin_layout_root(
-			document,
-			Some(&siblings[start..start + count]),
-			options,
-			images,
-		);
+		let layout =
+			self.begin_layout_root(document, Some(roots), options, images);
 		self.complete_prefix(document, layout, height, &cancelled)
 	}
 }

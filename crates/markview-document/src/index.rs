@@ -3,20 +3,34 @@
 mod proptests;
 
 use crate::{
-	AnchorId, Block, BlockId, BlockKind, InlineKind, OutlineEntry, RichText,
-	plain_text,
+	AnchorId, Block, BlockId, BlockKind, InlineKind, ListItem, OutlineEntry,
+	RichText, plain_text,
 };
 use std::collections::HashMap;
 
+#[cfg(test)]
+thread_local! {
+	pub(crate) static ITEM_LOOKUP_PROBES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct DocumentIndex {
+	pub has_embeds: bool,
 	/// Structural child-index path from the document root to each block.
 	pub paths: HashMap<BlockId, std::ops::Range<usize>>,
 	pub path_data: Vec<usize>,
 	pub outline: Vec<OutlineEntry>,
 	pub details: HashMap<BlockId, bool>,
+	pub list_items: HashMap<AnchorId, ListItemPosition>,
 	/// The owning block and disclosures enclosing each anchor, outermost first.
 	pub enclosing: HashMap<AnchorId, (BlockId, Vec<BlockId>)>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ListItemPosition {
+	pub list: BlockId,
+	pub index: usize,
+	pub number: Option<isize>,
 }
 
 pub(crate) fn build(blocks: &[Block]) -> DocumentIndex {
@@ -39,6 +53,7 @@ fn walk(
 	open: &mut Vec<BlockId>,
 	index: &mut DocumentIndex,
 ) {
+	index.has_embeds |= block.note_embed().is_some();
 	let start = index.path_data.len();
 	index.path_data.extend_from_slice(path);
 	index.paths.insert(block.id, start..index.path_data.len());
@@ -109,13 +124,65 @@ fn walk(
 	if disclosure {
 		open.push(block.id);
 	}
-	for (child, block) in children(block).into_iter().enumerate() {
-		path.push(child);
-		walk(block, path, open, index);
-		path.pop();
+	if let BlockKind::List {
+		start,
+		reversed,
+		items,
+		..
+	} = block.kind()
+	{
+		walk_list(block.id(), *start, *reversed, items, path, open, index);
+	} else {
+		for (child, block) in children(block).into_iter().enumerate() {
+			path.push(child);
+			walk(block, path, open, index);
+			path.pop();
+		}
 	}
 	if disclosure {
 		open.pop();
+	}
+}
+
+fn walk_list(
+	list: BlockId,
+	mut number: Option<isize>,
+	reversed: bool,
+	items: &[ListItem],
+	path: &mut Vec<usize>,
+	open: &mut Vec<BlockId>,
+	index: &mut DocumentIndex,
+) {
+	let mut child = 0;
+	for (item_index, item) in items.iter().enumerate() {
+		#[cfg(test)]
+		ITEM_LOOKUP_PROBES.with(|probes| probes.set(probes.get() + 1));
+		number = number.map(|value| item.number.unwrap_or(value));
+		if let Some(first) = item.blocks.first()
+			&& let Some(anchor) = first.list_item_anchor()
+		{
+			index.list_items.insert(
+				AnchorId::Fragment(anchor.to_owned()),
+				ListItemPosition {
+					list,
+					index: item_index,
+					number,
+				},
+			);
+		}
+		for block in &item.blocks {
+			path.push(child);
+			walk(block, path, open, index);
+			path.pop();
+			child += 1;
+		}
+		number = number.map(|value| {
+			if reversed {
+				value.saturating_sub(1)
+			} else {
+				value.saturating_add(1)
+			}
+		});
 	}
 }
 
@@ -183,6 +250,56 @@ pub(crate) fn children(block: &Block) -> Vec<&Block> {
 	}
 }
 
+/// The sibling list and position corresponding to a flattened child index.
+pub(crate) fn siblings_at(
+	parent: &Block,
+	index: usize,
+) -> Option<(&[Block], usize)> {
+	match parent.kind() {
+		BlockKind::Quote { blocks, .. }
+		| BlockKind::Footnote { blocks, .. }
+		| BlockKind::Details { blocks, .. }
+		| BlockKind::FrontMatter { blocks, .. }
+		| BlockKind::Figure { blocks, .. } => Some((blocks, index)),
+		BlockKind::List { items, .. } => sibling_group(
+			index,
+			items.iter().map(|item| item.blocks.as_slice()),
+		),
+		BlockKind::Table(table) => sibling_group(
+			index,
+			table
+				.groups
+				.iter()
+				.flat_map(|group| &group.rows)
+				.flat_map(|row| &row.cells)
+				.map(|cell| cell.blocks.as_slice()),
+		),
+		BlockKind::DefinitionList(items) => sibling_group(
+			index,
+			items
+				.iter()
+				.flat_map(|item| &item.definitions)
+				.map(Vec::as_slice),
+		),
+		_ => None,
+	}
+}
+
+fn sibling_group<'a>(
+	mut index: usize,
+	groups: impl Iterator<Item = &'a [Block]>,
+) -> Option<(&'a [Block], usize)> {
+	for blocks in groups {
+		#[cfg(test)]
+		ITEM_LOOKUP_PROBES.with(|probes| probes.set(probes.get() + 1));
+		if index < blocks.len() {
+			return Some((blocks, index));
+		}
+		index -= blocks.len();
+	}
+	None
+}
+
 /// Resolve a structural path from the document root.
 pub(crate) fn resolve<'a>(
 	blocks: &'a [Block],
@@ -191,7 +308,8 @@ pub(crate) fn resolve<'a>(
 	let (first, rest) = path.split_first()?;
 	let mut block = blocks.get(*first)?;
 	for child in rest {
-		block = *children(block).get(*child)?;
+		let (siblings, index) = siblings_at(block, *child)?;
+		block = siblings.get(index)?;
 	}
 	Some(block)
 }

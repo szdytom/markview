@@ -195,6 +195,21 @@ impl<P: super::SendEvent> App<P> {
 		self.request(follow);
 		self.export.schedule_watch_export(path);
 	}
+	pub(super) fn reload_embeds(&mut self, path: &Path) {
+		let session = &mut self.readers.session;
+		session.discard_cached_page();
+		session.counts_content_id = None;
+		if let Some(pending) = &mut session.pending_preview_action
+			&& pending.revision == session.content_version
+		{
+			pending.revision += 1;
+		}
+		session.content_version += 1;
+		session.details_open = Default::default();
+		self.invalidate_search_for_new_parse();
+		self.request(false);
+		self.export.schedule_watch_export(path);
+	}
 	fn resume_document(&mut self) {
 		if self.readers.session.display.cached_slice.is_some()
 			&& self.readers.session.requested_options.as_ref()
@@ -221,7 +236,21 @@ impl<P: super::SendEvent> App<P> {
 			self.reload_document(&path, false);
 			return;
 		}
-		if self.needs_request() {
+		let composition = session
+			.document
+			.as_ref()
+			.and_then(|document| document.composition());
+		if let Some(path) = session.path.clone()
+			&& composition
+				.is_some_and(|composition| composition.dependencies.changed())
+		{
+			self.reload_embeds(&path);
+			return;
+		}
+		if composition
+			.is_some_and(|composition| !composition.dependencies.is_empty())
+			|| self.needs_request()
+		{
 			self.request(false);
 		}
 	}

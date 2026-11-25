@@ -58,6 +58,10 @@ fn markers_label_blocks_without_entering_the_reading_text() {
 		("- [ ] a ^My-ID\n- b\n", "ab", "paragraph"),
 		("- outer\n  - inner ^My-ID\n", "outerinner", "paragraph"),
 		("- first\n\n  last ^My-ID\n", "firstlast", "paragraph"),
+		("- first\n    ^My-ID\n- two\n", "firsttwo", "paragraph"),
+		("- first\n\n    ^My-ID\n- two\n", "firsttwo", "paragraph"),
+		("- a\n- b\n\n^My-ID\n", "ab", "list"),
+		("> - a\n> - b\n>\n> ^My-ID\n", "ab", "list"),
 		("| A |\n| - |\n| y ^My-ID |\n", "Ay", "table"),
 		("> [!note]- Title\n> Body ^My-ID\n", "TitleBody", "quote"),
 		("one ^first\ntwo ^My-ID\n", "one ^first two", "paragraph"),
@@ -75,6 +79,7 @@ fn markers_label_blocks_without_entering_the_reading_text() {
 			}
 			BlockKind::Quote { .. } => "quote",
 			BlockKind::Table(_) => "table",
+			BlockKind::List { .. } => "list",
 			other => panic!("unexpected owner: {other:?}"),
 		};
 		assert_eq!(kind, owner, "{source}");
@@ -103,7 +108,10 @@ fn literal_carets_and_unsupported_standalone_markers_remain_text() {
 		"hello\n^next\n",
 		"hello\n\n^separate\n",
 		"> quote\n\n^separate\n",
-		"- list\n\n^separate\n",
+		"- list\n^unindented\n",
+		"- list\n\n\\^escaped\n",
+		"- list\n\n^bad_id\n",
+		"- list\n\n^trailing  \n",
 		"*hello ^em*\n",
 		"[hello ^label](https://example.com)\n",
 		"`code ^id`\n",
@@ -192,6 +200,79 @@ fn markers_stay_hidden_in_depth_fallbacks() {
 	let doc = parse_with(source, ofm());
 	assert!(!reading(&doc).contains("^secret"));
 	assert_eq!(doc.map.validate(&doc.source, &doc.document), Ok(()));
+}
+
+#[test]
+fn whole_list_ids_stay_hidden_at_the_depth_limit() {
+	for (depth, marker) in [(255, "^whole\n\n"), (256, ""), (256, "^whole\n\n")]
+	{
+		let source = format!(
+			"{}- First\n- Second\n\n{marker}{}",
+			"<details>\n\n".repeat(depth),
+			"</details>\n\n".repeat(depth)
+		);
+		let doc = parse_with(source, ofm());
+		let visible = reading(&doc);
+		assert!(
+			visible.contains("First") && visible.contains("Second"),
+			"{depth}"
+		);
+		assert!(!visible.contains("^whole"), "{depth}");
+		assert_eq!(doc.map.validate(&doc.source, &doc.document), Ok(()));
+	}
+}
+
+#[test]
+fn standalone_item_ids_survive_the_markdown_reparse_after_svg() {
+	use markview_document::embed::{
+		Expansion, Request, Source, SourceId, Target, expand,
+	};
+	use std::collections::HashMap;
+
+	let host = parse_with("![[B#^first]]", ofm());
+	for separator in ["\n\n", "\n"] {
+		let leaf = parse_with(
+			format!(
+				"<svg/>{separator}- First marker\n    ^first\n\n- Separate marker\n"
+			),
+			ofm(),
+		);
+		assert!(
+			leaf.blocks()
+				.iter()
+				.any(|block| matches!(block.kind(), BlockKind::List { .. }))
+		);
+		let source = Source {
+			id: SourceId(0),
+			document: &host.document,
+		};
+		let targets = HashMap::from([(
+			Request {
+				from: SourceId(0),
+				note: "B".into(),
+			},
+			Target::Loaded(Source {
+				id: SourceId(1),
+				document: &leaf.document,
+			}),
+		)]);
+		let Expansion::Ready(expanded) = expand(&source, &targets) else {
+			panic!("unexpected target lookup");
+		};
+		let BlockKind::List { items, .. } =
+			expanded.document.blocks()[0].kind()
+		else {
+			panic!("expected the embedded list item after {separator:?}");
+		};
+		assert_eq!(items.len(), 1);
+		assert!(matches!(
+			items[0].blocks[0].kind(),
+			BlockKind::Paragraph(content) if plain_text(content) == "First marker"
+		));
+		assert!(leaf.anchor_block("^first").is_some());
+		assert!(!reading(&leaf).contains("^first"));
+		assert_eq!(leaf.map.validate(&leaf.source, &leaf.document), Ok(()));
+	}
 }
 
 proptest! {

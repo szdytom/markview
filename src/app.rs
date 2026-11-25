@@ -137,6 +137,7 @@ enum Event {
 		document: Arc<crate::loaded::LoadedDocument>,
 	},
 	Changed(PathBuf),
+	EmbedChanged(PathBuf, u64),
 	SettingsChanged,
 	StylesChanged,
 	/// A desktop or native open request, routed by the single-instance policy.
@@ -444,6 +445,7 @@ impl<P: SendEvent> App<P> {
 		let fonts_config = args.options.fonts.clone();
 		let done = proxy.clone();
 		let parsed_proxy = proxy.clone();
+		let embed_proxy = proxy.clone();
 		let services = Arc::new(crate::services::Services::new(4));
 		if args.mode == crate::cli::Mode::Window
 			&& markview_platform::portal_theme()
@@ -476,6 +478,9 @@ impl<P: SendEvent> App<P> {
 					content_version,
 					document,
 				})
+			},
+			move |path, version| {
+				embed_proxy.send(Event::EmbedChanged(path, version))
 			},
 		);
 		let search_proxy = proxy.clone();

@@ -82,8 +82,20 @@ current directory, root, then an unambiguous suffix in the tree; use a folder pa
 when names collide. `![[image.png]]` resolves from the open folder root, and a
 pipe label is alt text, not an image width.
 
-Note transclusion, block references, plugins and graph views are unsupported.
-Markview does not modify notes or vault configuration. See
+In the Obsidian preset, put `![[Note#Heading]]` or `![[Note#^block-id]]` in
+its own paragraph to embed a section or block. A section starts at its heading
+and ends at the next heading of the same or higher level in the same container.
+Omit the note name to embed from the current document. A trailing ` ^id` gives
+the start of the embedded content a block ID. Relative links and images
+use the note they appear in as their base. Unavailable targets display as links.
+The native reader refreshes the embed when its source changes, and PDF and PNG
+exports include the embedded content.
+
+To embed an entire list, place its `^id` on a separate line after a blank
+line. Place the ID within a list item to embed that item with its marker and
+task state.
+
+Markview reads notes and vault configuration without writing to them. See
 [Markdown dialect](settings.md#markdown-dialect) for parsing choices.
 
 ## Resource permissions

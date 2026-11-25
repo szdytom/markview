@@ -5,6 +5,7 @@
 //! CommonMark front end keeps a [`crate::source::SourceMap`], while an HTML
 //! front end may have no source text at all.
 mod color;
+pub mod embed;
 pub mod image;
 pub use color::Color;
 pub use image::{Diagram, ImageSource, ImageSpec, ResourceBase, ResourceRef};
@@ -508,7 +509,10 @@ pub struct Callout {
 /// incremental parse keeps the same meaning under new ids.
 impl PartialEq for Block {
 	fn eq(&self, other: &Self) -> bool {
-		self.anchors == other.anchors && self.kind == other.kind
+		self.anchors == other.anchors
+			&& self.list_item_anchor == other.list_item_anchor
+			&& self.kind == other.kind
+			&& self.embed == other.embed
 	}
 }
 
@@ -517,7 +521,9 @@ impl Eq for Block {}
 impl Hash for Block {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.anchors.hash(state);
+		self.list_item_anchor.hash(state);
 		self.kind.hash(state);
+		self.embed.hash(state);
 	}
 }
 
@@ -529,6 +535,8 @@ impl Hash for Block {
 #[derive(Clone, Debug)]
 pub struct Block {
 	pub(crate) anchors: Vec<String>,
+	pub(crate) list_item_anchor: Option<std::num::NonZeroU32>,
+	pub(crate) embed: Option<Box<embed::NoteEmbed>>,
 	pub(crate) id: BlockId,
 	/// Semantic cache identity includes resolved references, excludes positions.
 	pub(crate) content_key: ContentKey,
@@ -536,6 +544,16 @@ pub struct Block {
 }
 
 impl Block {
+	/// An unresolved note embed, with the paragraph as its link fallback.
+	pub fn note_embed(&self) -> Option<&embed::NoteEmbed> {
+		self.embed.as_deref()
+	}
+
+	pub fn with_note_embed(mut self, embed: embed::NoteEmbed) -> Self {
+		self.embed = Some(Box::new(embed));
+		self
+	}
+
 	/// Fragment targets attached to the top of this block.
 	pub fn anchors(&self) -> &[String] {
 		&self.anchors
@@ -561,12 +579,15 @@ impl Block {
 
 	/// Replaces the anchors of a block that is being rebuilt.
 	pub fn with_anchors(mut self, anchors: Vec<String>) -> Self {
-		self.anchors = anchors;
+		self.relabel(anchors);
 		self
 	}
 
 	/// Replaces the anchors in place during a builder-side rebuild.
 	pub fn relabel(&mut self, anchors: Vec<String>) {
+		self.list_item_anchor = self
+			.list_item_anchor()
+			.and_then(|anchor| anchor_position(&anchors, anchor));
 		self.anchors = anchors;
 	}
 
@@ -577,11 +598,35 @@ impl Block {
 		}
 	}
 
+	/// Adds the enclosing list item's anchor to its first block for navigation.
+	pub fn add_list_item_anchor(&mut self, anchor: String) {
+		self.list_item_anchor = anchor_position(&self.anchors, &anchor)
+			.or_else(|| {
+				self.anchors.push(anchor);
+				std::num::NonZeroU32::new(
+					self.anchors.len().try_into().unwrap(),
+				)
+			});
+	}
+
+	pub(crate) fn list_item_anchor(&self) -> Option<&str> {
+		self.list_item_anchor
+			.map(|position| self.anchors[position.get() as usize - 1].as_str())
+	}
+
 	/// Replaces the kind of a block that is being rebuilt.
 	pub fn with_kind(mut self, kind: BlockKind) -> Self {
 		self.kind = kind;
 		self
 	}
+}
+
+fn anchor_position(
+	anchors: &[String],
+	name: &str,
+) -> Option<std::num::NonZeroU32> {
+	let index = anchors.iter().position(|anchor| anchor == name)?;
+	std::num::NonZeroU32::new((index + 1).try_into().unwrap())
 }
 
 /// One heading of a document's outline, in reading order.
@@ -605,6 +650,10 @@ pub struct Document {
 }
 
 impl Document {
+	pub fn has_note_embeds(&self) -> bool {
+		self.index.has_embeds
+	}
+
 	pub fn revision(&self) -> DocumentRevision {
 		self.revision
 	}
@@ -661,6 +710,14 @@ impl Document {
 	/// The block at a structural path from the document root.
 	pub fn block_at_path(&self, path: &[usize]) -> Option<&Block> {
 		index::resolve(&self.blocks, path)
+	}
+
+	/// The list owning the item anchored by `anchor`.
+	pub(crate) fn list_item_position(
+		&self,
+		anchor: &AnchorId,
+	) -> Option<index::ListItemPosition> {
+		self.index.list_items.get(anchor).copied()
 	}
 
 	/// The state a `<details>` element with `id` declared in its source.

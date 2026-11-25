@@ -337,6 +337,12 @@ impl<P: super::SendEvent> App<P> {
 			{
 				self.reload_document(&path, true);
 			}
+			Event::EmbedChanged(path, version)
+				if self.readers.session.path.as_ref() == Some(&path)
+					&& self.readers.session.version == version =>
+			{
+				self.reload_embeds(&path);
+			}
 			Event::Ready(mut update)
 				if update.version == self.readers.session.version
 					&& self.readers.session.path.as_ref()

@@ -215,6 +215,7 @@ fn key(source: &ImageSource) -> Option<String> {
 	let resource = source.resource()?;
 	let prefix = match resource.base {
 		ResourceBase::Document => "",
+		ResourceBase::Source(_) | ResourceBase::VaultSource(_) => return None,
 		ResourceBase::Vault => "vault:",
 	};
 	Some(format!("{prefix}{}", resource.address))

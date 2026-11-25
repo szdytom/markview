@@ -41,6 +41,9 @@ pub(crate) struct Command {
 	/// The original resource directory, independent of the source text.
 	#[arg(long)]
 	base_dir: Option<PathBuf>,
+	/// Workspace root for looking up note names and vault images.
+	#[arg(long, value_name = "DIR")]
+	workspace: Option<PathBuf>,
 	#[command(flatten)]
 	pub(crate) reading: crate::cli::ExportReading,
 	#[arg(long, default_value_t = 2.0)]
@@ -87,7 +90,9 @@ impl Command {
 		let output =
 			self.output.as_ref().context("export requires --output")?;
 		config.scale = self.scale;
-		config = config.with_dialect(self.dialect());
+		config = config
+			.with_dialect(self.dialect())
+			.with_workspace(self.workspace.clone());
 		let prepared = config.prepare()?;
 		let mut text = String::new();
 		std::io::stdin()
@@ -159,13 +164,14 @@ impl Command {
 		let sheet = prepared.options.stylesheet.clone();
 		let fonts = prepared.options.fonts.clone();
 		let geometry = prepared.geometry;
-		let snapshot = export::png_snapshot_text(
-			resource_path,
+		let snapshot = export::png_snapshot_text_with_workspace(
+			export::PngSource::buffer(resource_path).with_output(output),
 			text,
 			prepared.options,
 			offline,
 			services,
 			security,
+			prepared.workspace,
 		)?;
 		self.cancelled()?;
 		let mut renderer =

@@ -34,7 +34,9 @@ pub struct Request {
 	pub path: PathBuf,
 	/// A document already parsed by its front end, when no file is read.
 	pub loaded: Option<Arc<crate::loaded::LoadedDocument>>,
-	/// The open folder root, used by Obsidian vault image embeds.
+	/// The embed state already accepted by the requesting tab at this revision.
+	pub embed_baseline: Option<EmbedBaseline>,
+	/// The open folder root, used by Obsidian note and image embeds.
 	pub workspace: Option<PathBuf>,
 	pub options: LayoutOptions,
 	pub requested: Instant,
@@ -107,6 +109,133 @@ impl PrefixPublication {
 	}
 }
 
+#[derive(Default)]
+struct EmbedWatch(Option<EmbedObservation>);
+
+struct EmbedObservation {
+	path: PathBuf,
+	content_version: u64,
+	baseline: EmbedBaseline,
+	next: Option<Instant>,
+}
+
+#[derive(Clone)]
+pub(crate) struct EmbedBaseline {
+	raw: Option<markview_document::ContentKey>,
+	content: u64,
+	dependencies: crate::embed::Dependencies,
+}
+
+impl EmbedBaseline {
+	pub(crate) fn from_document(
+		document: &crate::loaded::LoadedDocument,
+	) -> Self {
+		let dependencies = document
+			.composition()
+			.map(|composition| composition.dependencies.clone())
+			.unwrap_or_default();
+		Self {
+			raw: document
+				.markdown_parse()
+				.map(|parse| parse.document.content_key()),
+			content: document.content_key().get(),
+			dependencies,
+		}
+	}
+
+	pub(crate) fn after_release(content: u64) -> Self {
+		Self {
+			raw: None,
+			content,
+			dependencies: Default::default(),
+		}
+	}
+
+	fn invalidated(&self, document: &crate::loaded::LoadedDocument) -> bool {
+		self.dependencies.changed()
+			|| (self.content != document.content_key().get()
+				&& document.markdown_parse().is_some_and(|parse| {
+					parse.document.has_note_embeds()
+						&& self.raw.is_none_or(|raw| {
+							parse.document.content_key() == raw
+						})
+				}))
+	}
+}
+
+impl EmbedWatch {
+	fn observe(
+		&mut self,
+		request: &Request,
+		document: &crate::loaded::LoadedDocument,
+	) {
+		let baseline = EmbedBaseline::from_document(document);
+		self.0 = Some(EmbedObservation {
+			path: request.path.clone(),
+			content_version: request.content_version,
+			next: (!baseline.dependencies.is_empty())
+				.then(|| Instant::now() + crate::embed::CHECK_INTERVAL),
+			baseline,
+		});
+	}
+
+	fn deadline(&self, fallback: Instant) -> Instant {
+		self.0
+			.as_ref()
+			.and_then(|observed| observed.next)
+			.map_or(fallback, |next| fallback.min(next))
+	}
+
+	fn pause(&mut self) {
+		if let Some(observed) = &mut self.0 {
+			observed.next = None;
+		}
+	}
+
+	fn changed(&mut self, now: Instant) -> bool {
+		let Some(observed) = &mut self.0 else {
+			return false;
+		};
+		if observed.next.is_none_or(|next| now < next) {
+			return false;
+		}
+		let changed = observed.baseline.dependencies.changed();
+		observed.next =
+			(!changed).then_some(now + crate::embed::CHECK_INTERVAL);
+		changed
+	}
+
+	fn needs_revision(
+		&self,
+		request: &Request,
+		document: &crate::loaded::LoadedDocument,
+	) -> bool {
+		let baseline = request.embed_baseline.as_ref().or_else(|| {
+			let observed = self.0.as_ref()?;
+			(observed.path == request.path
+				&& observed.content_version == request.content_version)
+				.then_some(&observed.baseline)
+		});
+		baseline.is_some_and(|baseline| baseline.invalidated(document))
+	}
+}
+
+fn reuse_markdown(
+	previous: Arc<markview_commonmark::MarkdownParse>,
+	source: &Arc<str>,
+	dialect: markview_commonmark::Dialect,
+) -> Arc<markview_commonmark::MarkdownParse> {
+	if previous.source == *source {
+		previous
+	} else {
+		Arc::new(markview_commonmark::reparse_with(
+			&previous,
+			source.clone(),
+			dialect,
+		))
+	}
+}
+
 type CachedCounts = Option<(u64, markview_layout::text::TextCounts)>;
 
 pub struct Worker {
@@ -145,6 +274,7 @@ impl Worker {
 			fonts,
 			done,
 			parsed,
+			|_, _| {},
 		)
 	}
 	pub(crate) fn with_services_and_parsed(
@@ -155,6 +285,7 @@ impl Worker {
 		parsed: impl Fn(PathBuf, u64, Arc<crate::loaded::LoadedDocument>)
 		+ Send
 		+ 'static,
+		embed_changed: impl Fn(PathBuf, u64) + Send + 'static,
 	) -> Self {
 		let inbox = Arc::new((Mutex::new(Inbox::default()), Condvar::new()));
 		let thread_inbox = inbox.clone();
@@ -210,12 +341,17 @@ impl Worker {
 					markview_commonmark::Dialect,
 					Arc<markview_commonmark::MarkdownParse>,
 				)> = None;
+				let mut embeds = crate::embed::Loader::default();
+				let mut embed_poll = EmbedWatch::default();
 				loop {
-					let Some((request, release)) = wait_for_request(&thread_inbox, images.poll_deadline()) else {
+					let deadline = embed_poll.deadline(images.poll_deadline());
+					let Some((request, release)) = wait_for_request(&thread_inbox, deadline) else {
                         break;
                     };
 					if release {
 						cached = None;
+						embeds = Default::default();
+						embed_poll = EmbedWatch::default();
 						last = None;
 						counted = None;
 						engine.release_document();
@@ -223,17 +359,16 @@ impl Worker {
 						continue;
 					}
 					let Some(request) = request else {
+						if embed_poll.changed(Instant::now()) {
+							let request = last.as_ref().unwrap();
+							embed_changed(request.path.clone(), request.version);
+							continue;
+						}
 						let changed = images.poll();
 						let highlights =
 							last.is_some() && engine.poll_highlights();
 						if changed || highlights {
-							let (lock, _) = &*thread_inbox;
-							let mut inbox = Inbox::lock(lock);
-							if inbox.pending.is_none()
-								&& !inbox.stopped && !inbox.release
-							{
-								inbox.pending = last.clone();
-							}
+							requeue_background(&thread_inbox, last.as_ref());
 						}
 						continue;
 					};
@@ -261,6 +396,7 @@ impl Worker {
 						layout_ms: 0.0,
 						counts: None,
 					};
+					let mut refresh_embeds = false;
 					update.result =
 						Some((|| -> Result<ReaderSnapshot, String> {
 							let dialect = markview_commonmark::Dialect {
@@ -307,15 +443,7 @@ impl Worker {
 									})
 									.map(|(_, _, _, doc)| doc.clone());
 								let doc = match previous {
-									Some(previous) => {
-										Arc::new(
-											markview_commonmark::reparse_with(
-												&previous,
-												source.clone(),
-												dialect,
-											),
-										)
-									}
+									Some(previous) => reuse_markdown(previous, &source, dialect),
 									None => {
 										// A fresh document that is large
 										// enough to pay for it shows its
@@ -347,6 +475,7 @@ impl Worker {
 												request.security.clone(),
 											);
 											images.set_requested_image(request.requested_image.clone());
+											images.set_embed_paths(None);
 											images.set_initial_width(
 												request.options.width,
 											);
@@ -443,11 +572,17 @@ impl Worker {
 								));
 								crate::loaded::LoadedDocument::markdown(doc)
 							};
-							if current.sequence.load(Ordering::Relaxed)
-								!= request.version
-							{
-								return Err("Superseded".into());
-							}
+							let document = embeds.prepare(
+								document,
+								crate::embed::InputPath::File(&request.path),
+								request.workspace.as_deref(),
+								&request.security,
+								|| current.sequence.load(Ordering::Relaxed) != request.version,
+							).filter(|document| {
+								refresh_embeds = embed_poll.needs_revision(&request, document);
+								!refresh_embeds
+							}).ok_or_else(|| "Superseded".to_string())?;
+							embed_poll.observe(&request, &document);
 							parsed(
 								request.path.clone(),
 								request.content_version,
@@ -460,6 +595,7 @@ impl Worker {
 								)
 								.map_err(|e| format!("Fonts: {e:#}"))?;
 							images.set_security(request.security.clone());
+							images.set_embed_paths(document.embed_paths());
 							images.set_requested_image(request.requested_image.clone());
 							images.set_initial_width(request.options.width);
 							images.prepare(
@@ -545,6 +681,11 @@ impl Worker {
 								remote_deferred: images.deferred_remote(),
 							})
 						})());
+					if refresh_embeds {
+						embed_poll.pause();
+						embed_changed(request.path.clone(), request.version);
+						continue;
+					}
 					if current.sequence.load(Ordering::Relaxed)
 						== request.version
 					{
@@ -667,6 +808,17 @@ impl Drop for Worker {
 	}
 }
 
+fn requeue_background(
+	shared: &(Mutex<Inbox>, Condvar),
+	last: Option<&Request>,
+) {
+	let (lock, _) = shared;
+	let mut inbox = Inbox::lock(lock);
+	if inbox.pending.is_none() && !inbox.stopped && !inbox.release {
+		inbox.pending = last.cloned();
+	}
+}
+
 fn wait_for_request(
 	shared: &(Mutex<Inbox>, Condvar),
 	deadline: Instant,
@@ -743,6 +895,7 @@ mod tests {
 			content_version: 1,
 			path,
 			loaded: None,
+			embed_baseline: None,
 			workspace: None,
 			options: crate::test_support::options(),
 			requested: Instant::now(),
@@ -755,6 +908,169 @@ mod tests {
 		assert!(!worker.inbox.0.is_poisoned());
 		crate::test_support::poison(&worker.inbox.0);
 		drop(worker);
+	}
+
+	#[test]
+	fn note_embed_dependency_changes_rebuild_the_readers_document() {
+		use crate::security::{Security, Trust};
+		let directory = crate::test_support::TestDir::new();
+		let path = directory.path().join("A.md");
+		let note = directory.path().join("B.md");
+		let source = "![[B#^leaf]]";
+		fs::write(&path, source).unwrap();
+		fs::write(&note, "First marker ^leaf").unwrap();
+		let (updates, rendered) = mpsc::channel();
+		let (changes, changed) = mpsc::channel();
+		let worker = Worker::with_services_and_parsed(
+			Arc::new(crate::services::Services::new(2)),
+			true,
+			crate::test_support::fonts(),
+			move |update| updates.send(update).unwrap(),
+			|_, _, _| {},
+			move |path, version| changes.send((path, version)).unwrap(),
+		);
+		let mut options = crate::test_support::options();
+		options.ofm = true;
+		let submit = |version| {
+			worker.submit(Request {
+				security: Security::local(Trust::Trusted),
+				version,
+				content_version: version,
+				path: path.clone(),
+				loaded: None,
+				embed_baseline: None,
+				workspace: None,
+				options: options.clone(),
+				requested: Instant::now(),
+				coverage: 600.0,
+				load_all_images: false,
+				requested_image: None,
+			})
+		};
+		let receive = |version| loop {
+			let update =
+				rendered.recv_timeout(Duration::from_secs(10)).unwrap();
+			if update.version == version {
+				let reader = update.result.unwrap().unwrap();
+				if reader.complete {
+					break reader;
+				}
+			}
+		};
+		submit(1);
+		let first = receive(1);
+		assert!(first.layout.full_reading_text().contains("First marker"));
+		fs::write(&note, "A different second marker ^leaf").unwrap();
+		assert_eq!(
+			changed.recv_timeout(Duration::from_secs(10)).unwrap(),
+			(path.clone(), 1)
+		);
+		submit(2);
+		let second = receive(2);
+		assert!(
+			second
+				.layout
+				.full_reading_text()
+				.contains("A different second marker")
+		);
+		assert_eq!(fs::read_to_string(&path).unwrap(), source);
+		assert!(Arc::ptr_eq(
+			first.document.markdown_parse().unwrap(),
+			second.document.markdown_parse().unwrap()
+		));
+	}
+
+	#[test]
+	fn note_embed_edit_requests_a_revision_before_a_queued_reflow() {
+		use crate::security::{Security, Trust};
+		enum Observed {
+			Published(u64, u64, String),
+			Changed(PathBuf, u64),
+		}
+
+		let directory = crate::test_support::TestDir::new();
+		let path = directory.path().join("A.md");
+		let note = directory.path().join("B.md");
+		fs::write(&path, "![[B#Section]]").unwrap();
+		fs::write(&note, "# Section\n\nOld embedded content").unwrap();
+		let (events, received) = mpsc::channel();
+		let changes = events.clone();
+		let (resume, paused) = mpsc::channel();
+		let worker = Worker::with_services_and_parsed(
+			Arc::new(crate::services::Services::new(2)),
+			true,
+			crate::test_support::fonts(),
+			move |update| {
+				let Some(Ok(reader)) = update.result else {
+					return;
+				};
+				if reader.complete {
+					let _ = events.send(Observed::Published(
+						update.version,
+						reader.content_version,
+						reader.layout.full_reading_text(),
+					));
+					if update.version == 1 {
+						let _ = paused.recv_timeout(Duration::from_secs(5));
+					}
+				}
+			},
+			|_, _, _| {},
+			move |path, version| {
+				let _ = changes.send(Observed::Changed(path, version));
+			},
+		);
+		let submit = |version, content_version, width| {
+			let mut options = crate::test_support::options();
+			options.ofm = true;
+			options.width = width;
+			worker.submit(Request {
+				security: Security::local(Trust::Trusted),
+				version,
+				content_version,
+				path: path.clone(),
+				loaded: None,
+				embed_baseline: None,
+				workspace: None,
+				options,
+				requested: Instant::now(),
+				coverage: 600.0,
+				load_all_images: false,
+				requested_image: None,
+			});
+		};
+		submit(1, 1, 600.0);
+		assert!(
+			matches!(received.recv_timeout(Duration::from_secs(10)).unwrap(),
+			Observed::Published(1, 1, text) if text.contains("Old embedded content"))
+		);
+		fs::write(&note, "# Section\n\nNew embedded content after edit")
+			.unwrap();
+		submit(2, 1, 550.0);
+		resume.send(()).unwrap();
+
+		loop {
+			match received.recv_timeout(Duration::from_secs(10)).unwrap() {
+				Observed::Changed(changed, version) => {
+					assert_eq!((changed, version), (path.clone(), 2));
+					break;
+				}
+				Observed::Published(_, 1, text) => {
+					assert!(
+						!text.contains("New embedded content"),
+						"new text used the old content version"
+					);
+				}
+				Observed::Published(..) => {
+					panic!("unexpected reader publication")
+				}
+			}
+		}
+		submit(3, 2, 550.0);
+		assert!(
+			matches!(received.recv_timeout(Duration::from_secs(10)).unwrap(),
+			Observed::Published(3, 2, text) if text.contains("New embedded content"))
+		);
 	}
 
 	#[test]
@@ -832,6 +1148,7 @@ mod tests {
 			content_version: 1,
 			path: path.clone(),
 			loaded: None,
+			embed_baseline: None,
 			workspace: None,
 			options: crate::test_support::options(),
 			requested: Instant::now(),
@@ -902,6 +1219,7 @@ mod tests {
 			content_version: 1,
 			path,
 			loaded: None,
+			embed_baseline: None,
 			workspace: None,
 			options: crate::test_support::options(),
 			requested: Instant::now(),
@@ -950,6 +1268,7 @@ mod tests {
 			content_version: 1,
 			path: path.clone(),
 			loaded: None,
+			embed_baseline: None,
 			workspace: None,
 			options: LayoutOptions {
 				hard_breaks,
@@ -1012,6 +1331,7 @@ mod tests {
 			content_version: 1,
 			path: path.clone(),
 			loaded: None,
+			embed_baseline: None,
 			workspace: None,
 			options: LayoutOptions {
 				highlight_marks,
@@ -1075,6 +1395,7 @@ mod tests {
 				content_version: 1,
 				path: path.clone(),
 				loaded: None,
+				embed_baseline: None,
 				workspace: None,
 				options: LayoutOptions {
 					grid_tables,
@@ -1137,6 +1458,7 @@ mod tests {
 				content_version: 1,
 				path: path.clone(),
 				loaded: None,
+				embed_baseline: None,
 				workspace: None,
 				options: LayoutOptions {
 					math_dollars_block,
@@ -1199,6 +1521,7 @@ mod tests {
 				content_version: 1,
 				path: path.clone(),
 				loaded: None,
+				embed_baseline: None,
 				workspace: None,
 				options: LayoutOptions {
 					width: 250.0 + version as f32,
@@ -1244,6 +1567,7 @@ mod reflow_tests {
 				content_version,
 				path: path.clone(),
 				loaded: None,
+				embed_baseline: None,
 				workspace: None,
 				options: crate::test_support::options(),
 				requested: Instant::now(),
@@ -1309,6 +1633,7 @@ mod reflow_tests {
 			content_version: 1,
 			path: path.clone(),
 			loaded: None,
+			embed_baseline: None,
 			workspace: None,
 			options: crate::test_support::options(),
 			requested: Instant::now(),
@@ -1369,6 +1694,7 @@ mod reflow_tests {
 				content_version: 1,
 				path: path.clone(),
 				loaded: None,
+				embed_baseline: None,
 				workspace: None,
 				options: crate::test_support::options(),
 				requested: Instant::now(),

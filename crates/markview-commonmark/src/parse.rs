@@ -45,7 +45,7 @@ pub struct Dialect {
 	pub grid_tables: bool,
 	/// Parse standalone `$$` fences as literal display math blocks.
 	pub math_dollars_block: bool,
-	/// Obsidian callouts, hidden comments and block IDs, plus the inline HTML
+	/// Obsidian callouts, hidden comments, block IDs and embeds, plus the inline HTML
 	/// tags `<sub>`, `<mark>`, `<u>`, `<ins>` and `<small>`.
 	pub ofm: bool,
 }
@@ -605,7 +605,12 @@ impl Reader<'_> {
 						| NodeValue::BlockId(_)
 				)
 			})
-			.map(|descendant| self.range(descendant))
+			.filter_map(|descendant| {
+				let range = self.range(descendant);
+				let covered =
+					range.start.max(whole.start)..range.end.min(whole.end);
+				(!covered.is_empty()).then_some(covered)
+			})
 			.collect();
 		if hidden.is_empty() {
 			return self.source[whole.clone()].to_string();
@@ -614,8 +619,10 @@ impl Reader<'_> {
 		let mut text = String::new();
 		let mut cursor = whole.start;
 		for range in hidden {
-			text.push_str(&self.source[cursor..range.start]);
-			cursor = range.end;
+			if cursor < range.start {
+				text.push_str(&self.source[cursor..range.start]);
+			}
+			cursor = cursor.max(range.end);
 		}
 		text.push_str(&self.source[cursor..whole.end]);
 		text
@@ -708,6 +715,17 @@ impl Reader<'_> {
 		} else {
 			text.merged()
 		}
+	}
+
+	fn root_blocks<'a>(
+		&mut self,
+		root: &'a AstNode<'a>,
+		depth: usize,
+	) -> Vec<Block> {
+		if self.dialect.ofm {
+			block_ids::attach_list_markers(root, self.source, &self.lines);
+		}
+		self.blocks(root, depth)
 	}
 
 	fn blocks<'a>(
@@ -1235,6 +1253,12 @@ impl Reader<'_> {
 						tight: l.tight,
 						items: child
 							.children()
+							.filter(|item| {
+								!matches!(
+									item.data.borrow().value,
+									NodeValue::BlockId(_)
+								)
+							})
 							.map(|item| {
 								let checked = match &item.data.borrow().value {
 									NodeValue::TaskItem(t) => {
@@ -1246,7 +1270,7 @@ impl Reader<'_> {
 								if let Some(anchor) = block_ids::anchor(item)
 									&& let Some(first) = blocks.first_mut()
 								{
-									first.add_anchor(anchor);
+									first.add_list_item_anchor(anchor);
 								}
 								ListItem {
 									checked,
@@ -1359,7 +1383,18 @@ impl Reader<'_> {
 				}
 			}
 		};
-		let block = self.make(anchors, kind, source, fields, covers);
+		let embed = if self.dialect.ofm
+			&& matches!(kind, BlockKind::Paragraph(_))
+			&& matches!(data.value, NodeValue::Paragraph)
+		{
+			note_embed(child)
+		} else {
+			None
+		};
+		let mut block = self.make(anchors, kind, source, fields, covers);
+		if let Some(embed) = embed {
+			block = block.with_note_embed(embed);
+		}
 		if let NodeValue::FootnoteDefinition(f) = &data.value {
 			// Snippet parses retain duplicates. Keep the first definition.
 			self.footnote_blocks
@@ -1540,7 +1575,7 @@ impl Reader<'_> {
 			reparse_used: Rc::clone(&self.reparse_used),
 			reparse_limit: self.reparse_limit,
 		};
-		let blocks = reader.blocks(root, depth);
+		let blocks = reader.root_blocks(root, depth);
 		self.footnotes = reader.footnotes;
 		self.footnote_blocks = reader.footnote_blocks;
 		blocks
@@ -1974,7 +2009,7 @@ fn from_tree<'a>(
 				.saturating_mul(8)
 				.clamp(1 << 20, 64 << 20),
 		};
-		let mut blocks = reader.blocks(root, 0);
+		let mut blocks = reader.root_blocks(root, 0);
 		let mut notes: Vec<_> = reader
 			.footnote_blocks
 			.drain()
@@ -2139,7 +2174,52 @@ fn wikilink_url(link: &NodeWikiLink) -> String {
 	)
 }
 
-/// Whether an embed names a picture, so note transclusion stays a link.
+/// The note request for a paragraph whose only content is one wikilink embed.
+pub(crate) fn note_embed<'a>(
+	node: &'a AstNode<'a>,
+) -> Option<markview_document::embed::NoteEmbed> {
+	use markview_document::embed::{NoteEmbed, Selector};
+	if !matches!(node.data.borrow().value, NodeValue::Paragraph) {
+		return None;
+	}
+	let mut children = node.children();
+	let child = children.next()?;
+	if !children.all(|child| match &child.data.borrow().value {
+		NodeValue::BlockId(_) => true,
+		NodeValue::Text(text) => text.trim().is_empty(),
+		_ => false,
+	}) {
+		return None;
+	}
+	let data = child.data.borrow();
+	let NodeValue::WikiLink(link) = &data.value else {
+		return None;
+	};
+	if !link.embed || wikilink_image(link) {
+		return None;
+	}
+	let (note, heading) = link.url.split_once('#')?;
+	let fragment = heading.rsplit('#').next().unwrap_or(heading);
+	let selector = if let Some(id) = fragment.strip_prefix('^') {
+		if id.is_empty()
+			|| !id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+		{
+			return None;
+		}
+		Selector::Block(id.to_owned())
+	} else {
+		if heading.is_empty() {
+			return None;
+		}
+		Selector::Section(heading.to_owned())
+	};
+	Some(NoteEmbed {
+		note: note.replace('%', "%25"),
+		selector,
+	})
+}
+
+/// Whether an embed names a picture.
 fn wikilink_image(link: &NodeWikiLink) -> bool {
 	let path = link
 		.url

@@ -3324,3 +3324,162 @@ fn multiple_footnote_references_return_to_the_one_that_was_opened() {
 		assert!((session.scrolling.offset - expected).abs() < 0.01);
 	}
 }
+
+#[test]
+fn note_embed_resumes_watching_when_the_active_tab_is_reselected() {
+	let mut harness = Harness::new();
+	harness.app.preferences.values.markdown_flavor =
+		crate::settings::MarkdownFlavor::Obsidian;
+	let root = harness.dir.path();
+	let a = root.join("A.md");
+	let b = root.join("B.md");
+	fs::write(&a, "![[B#Section]]").unwrap();
+	fs::write(&b, "# Section\n\nOriginal embedded passage").unwrap();
+	fs::write(root.join("C.md"), "Unrelated document").unwrap();
+	harness.open("A.md", 0);
+	let a = a.canonicalize().unwrap();
+	harness.open("C.md", 0);
+	let tab = harness
+		.app
+		.readers
+		.entries()
+		.iter()
+		.position(|tab| tab.session.path.as_ref() == Some(&a))
+		.unwrap();
+	harness.app.select_tab(tab);
+	harness.wait_images(0);
+	let text = |app: &App<Proxy>| {
+		app.readers.session.display.snapshot.full_reading_text()
+	};
+	assert_eq!(harness.app.readers.session.path.as_ref(), Some(&a));
+	assert!(text(&harness.app).contains("Original embedded passage"));
+	fs::write(
+		&b,
+		"# Section\n\nEdited embedded passage of a different length",
+	)
+	.unwrap();
+	let deadline = Instant::now() + Duration::from_secs(3);
+	while let Ok(event) = harness
+		.events
+		.recv_timeout(deadline.saturating_duration_since(Instant::now()))
+	{
+		harness.app.handle_user_event(&StubLoop, event);
+		if text(&harness.app).contains("Edited embedded passage") {
+			return;
+		}
+		assert!(
+			Instant::now() < deadline,
+			"the resumed embed did not refresh"
+		);
+	}
+	panic!(
+		"the resumed embed did not refresh: {:?}",
+		text(&harness.app)
+	);
+}
+
+#[test]
+fn note_embed_workspace_switch_refreshes_find_when_returning_to_a_tab() {
+	check_embed_find_after_workspace_switch(false);
+}
+
+#[test]
+fn note_embed_workspace_switch_refreshes_find_after_releasing_the_tab() {
+	check_embed_find_after_workspace_switch(true);
+}
+
+fn check_embed_find_after_workspace_switch(release: bool) {
+	let mut harness = Harness::new();
+	harness.app.preferences.values.markdown_flavor =
+		crate::settings::MarkdownFlavor::Obsidian;
+	let outer = harness.dir.path().to_owned();
+	let inner = outer.join("inner");
+	let reader = inner.join("reader");
+	fs::create_dir_all(&reader).unwrap();
+	let a = reader.join("A.md");
+	let outer_note = outer.join("Topic.md");
+	let inner_note = inner.join("Topic.md");
+	fs::write(&a, "![[Topic#Section]]").unwrap();
+	fs::write(&outer_note, "# Section\n\nOuter topic match").unwrap();
+	fs::write(&inner_note, "# Section\n\nInner topic passage").unwrap();
+	fs::write(outer.join("C.md"), "Other tab").unwrap();
+	let tracked = [a.canonicalize().unwrap(), outer_note, inner_note];
+	let stamps = tracked.each_ref().map(|path| file_stamp(path));
+	let until = |harness: &mut Harness, ready: &dyn Fn(&App<Proxy>) -> bool| {
+		let deadline = Instant::now() + Duration::from_secs(10);
+		while !ready(&harness.app) {
+			let event = harness
+				.events
+				.recv_timeout(
+					deadline.saturating_duration_since(Instant::now()),
+				)
+				.expect(
+					"the requested workspace, layout, or query did not settle",
+				);
+			harness.app.handle_user_event(&StubLoop, event);
+		}
+	};
+
+	harness.app.open_folder(outer.clone(), false);
+	until(&mut harness, &|app| app.folder.root() == Some(&outer));
+	harness.open("inner/reader/A.md", 0);
+	assert!(
+		harness
+			.app
+			.readers
+			.session
+			.display
+			.snapshot
+			.full_reading_text()
+			.contains("Outer topic match")
+	);
+	harness.app.open_search();
+	harness
+		.app
+		.readers
+		.session
+		.search
+		.input
+		.set_text(&mut harness.app.ui, "Outer topic match");
+	harness.app.search_changed();
+	until(&mut harness, &|app| {
+		app.readers.session.search.matches.len() == 1
+			&& !app.readers.session.search.preparing
+	});
+	let tab = harness.app.readers.active();
+	harness.open("C.md", 0);
+	harness.app.open_folder(inner.clone(), false);
+	until(&mut harness, &|app| {
+		app.folder.root() == Some(&inner) && !app.readers.session.layout_pending
+	});
+
+	if release {
+		harness
+			.app
+			.readers
+			.release_inactive(Instant::now() + Duration::from_secs(3600));
+	}
+	let inactive = harness.app.readers.session_at(tab).unwrap();
+	assert_eq!(inactive.document.is_none(), release);
+	assert_eq!(inactive.path.as_ref(), Some(&tracked[0]));
+	assert_eq!(tracked.each_ref().map(|path| file_stamp(path)), stamps);
+	harness.app.select_tab(tab);
+	until(&mut harness, &|app| {
+		let session = &app.readers.session;
+		!session.layout_pending
+			&& !session.search.preparing
+			&& session
+				.display
+				.snapshot
+				.full_reading_text()
+				.contains("Inner topic passage")
+	});
+	assert_eq!(
+		harness.app.readers.session.search.input.text(),
+		"Outer topic match"
+	);
+	assert!(
+		harness.app.readers.session.search.matches.is_empty(),
+		"the new workspace still has the old search result"
+	);
+}

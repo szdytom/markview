@@ -184,6 +184,7 @@ fn submit(
 		version,
 		content_version,
 		path: path.to_path_buf(),
+		embed_baseline: None,
 		workspace: None,
 		loaded: None,
 		options: options.clone(),

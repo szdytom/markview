@@ -167,6 +167,109 @@ fn disclosure_click_opens_or_reuses_the_target_tab_and_executes_once() {
 }
 
 #[test]
+fn note_embed_does_not_drop_a_preview_disclosure_click() {
+	let mut case = Case::new(
+		"<details><summary>Details</summary>\n\nBody.\n\n</details>\n\n![[B#Section]]",
+		false,
+	);
+	case.app.preferences.values.markdown_flavor =
+		crate::settings::MarkdownFlavor::Obsidian;
+	fs::write(
+		case.dir.path().join("B.md"),
+		"# Section\n\nVisible embedded passage",
+	)
+	.unwrap();
+	case.show();
+	case.click(|target| matches!(target, LinkTarget::Disclosure(_)), 0);
+	assert_eq!(case.app.readers.session.path.as_ref(), Some(&case.target));
+	case.settle();
+	let session = &case.app.readers.session;
+	assert!(
+		session
+			.display
+			.snapshot
+			.full_reading_text()
+			.contains("Visible embedded passage")
+	);
+	let id = disclosure(&case.app, "Details");
+	assert_eq!(session.details_open.get(&id), Some(&true));
+	case.app.apply_anchor();
+	assert_eq!(case.app.readers.session.details_open.get(&id), Some(&true));
+}
+
+#[test]
+fn note_embed_keeps_the_preview_disclosure_during_workspace_recomposition() {
+	struct Loop;
+	impl crate::app::window::Loop for Loop {
+		fn exit(&self) {}
+	}
+
+	let dir = crate::test_support::TestDir::new();
+	let outer = dir.path().canonicalize().unwrap();
+	let inner = outer.join("inner");
+	let reader = inner.join("reader");
+	fs::create_dir_all(&reader).unwrap();
+	let target = reader.join("other.md");
+	let source = reader.join("source.md");
+	fs::write(
+		&target,
+		"# Target\n\n<details><summary>Details</summary>\n\nBody.\n\n</details>\n\n![[Topic#Section]]",
+	).unwrap();
+	fs::write(&source, "[Preview](other.md#target)").unwrap();
+	fs::write(outer.join("Topic.md"), "# Section\n\nOuter passage").unwrap();
+	fs::write(inner.join("Topic.md"), "# Section\n\nInner passage").unwrap();
+	let (mut app, events) = app();
+	app.preferences.values.markdown_flavor =
+		crate::settings::MarkdownFlavor::Obsidian;
+	let until = |app: &mut App<Proxy>,
+	             events: &mpsc::Receiver<Event>,
+	             ready: &dyn Fn(&App<Proxy>) -> bool| {
+		let deadline = Instant::now() + Duration::from_secs(10);
+		while !ready(app) {
+			let event = events
+				.recv_timeout(
+					deadline.saturating_duration_since(Instant::now()),
+				)
+				.expect("the document or workspace did not settle");
+			app.handle_user_event(&Loop, event);
+		}
+	};
+	app.open_folder(outer.clone(), false);
+	until(&mut app, &events, &|app| app.folder.root() == Some(&outer));
+	load(&mut app, &events, target.clone());
+	let text = |app: &App<Proxy>| {
+		app.readers.session.display.snapshot.full_reading_text()
+	};
+	assert!(text(&app).contains("Outer passage"));
+	let original_revision = app.readers.session.content_version;
+	load(&mut app, &events, source);
+	let tabs = app.readers.entries().len();
+	app.open_folder(inner.clone(), false);
+	until(&mut app, &events, &|app| {
+		app.folder.root() == Some(&inner) && !app.readers.session.layout_pending
+	});
+	let mut case = Case {
+		app,
+		events,
+		dir,
+		target,
+	};
+	case.show();
+	case.click(|target| matches!(target, LinkTarget::Disclosure(_)), 0);
+	until(&mut case.app, &case.events, &|app| {
+		!app.readers.session.layout_pending
+			&& text(app).contains("Inner passage")
+	});
+	assert_eq!(case.app.readers.entries().len(), tabs);
+	assert_eq!(case.app.readers.session.path.as_ref(), Some(&case.target));
+	assert!(case.app.readers.session.content_version > original_revision);
+	let id = disclosure(&case.app, "Details");
+	assert_eq!(case.app.readers.session.details_open.get(&id), Some(&true));
+	case.app.apply_anchor();
+	assert_eq!(case.app.readers.session.details_open.get(&id), Some(&true));
+}
+
+#[test]
 fn untrusted_link_preview_actions_preserve_trust_and_honor_revocation() {
 	use crate::security::{Resource, Security, Trust};
 	for revoked in [false, true] {
@@ -733,4 +836,25 @@ fn pressing_a_refreshing_file_preview_stops_synthesized_trackpad_coast() {
 		before, after,
 		"the retained scene must not coast after the press"
 	);
+}
+
+#[test]
+fn note_embed_visible_preview_link_still_opens_its_target() {
+	for flavor in [
+		crate::settings::MarkdownFlavor::Gfm,
+		crate::settings::MarkdownFlavor::Obsidian,
+	] {
+		let mut case = Case::new("![[B.md#Section]]\n", false);
+		case.app.preferences.values.markdown_flavor = flavor;
+		let target = case.dir.path().join("B.md");
+		fs::write(&target, "# Section\n\nThe linked note").unwrap();
+		case.show();
+		case.click(|target| matches!(target, LinkTarget::Url(_)), 0);
+		case.settle();
+		assert_eq!(
+			case.app.readers.session.path,
+			Some(target.canonicalize().unwrap()),
+			"{flavor:?}"
+		);
+	}
 }

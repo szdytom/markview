@@ -108,6 +108,7 @@ pub(crate) struct LaunchOptions {
 	pub(crate) path: Option<PathBuf>,
 	pub(crate) web_url: Option<String>,
 	pub(crate) output: Option<PathBuf>,
+	pub(crate) workspace: Option<PathBuf>,
 	pub(crate) width: u32,
 	pub(crate) height: u32,
 	pub(crate) scale: f32,
@@ -145,6 +146,7 @@ impl Default for LaunchOptions {
 			path: None,
 			web_url: None,
 			output: None,
+			workspace: None,
 			width: 1200,
 			height: 800,
 			scale: 1.0,
@@ -318,6 +320,8 @@ struct RenderArgs {
 	/// Where to write the image.
 	#[arg(short = 'o', long, value_name = "PNG")]
 	output: PathBuf,
+	#[command(flatten)]
+	notes: FileNoteOptions,
 	/// Image scale.
 	#[arg(long, value_name = "N")]
 	scale: Option<f32>,
@@ -374,6 +378,8 @@ struct PdfArgs {
 	/// Where to write the PDF.
 	#[arg(short = 'o', long, value_name = "PDF")]
 	output: PathBuf,
+	#[command(flatten)]
+	notes: FileNoteOptions,
 	/// Paper size: a3, a4, a5, a6, b5, letter, legal, tabloid, or WIDTHxHEIGHT.
 	#[arg(long, value_name = "SIZE")]
 	paper: Option<String>,
@@ -404,7 +410,7 @@ struct PdfArgs {
 	/// Leave links unannotated.
 	#[arg(long = "no-links")]
 	no_links: bool,
-	/// Re-export whenever the document or a local image changes.
+	/// Re-export whenever the document, an embedded note, or a local image changes.
 	#[arg(long)]
 	watch: bool,
 	/// PDF title.
@@ -427,6 +433,24 @@ struct PdfArgs {
 	creator: Option<String>,
 	#[command(flatten)]
 	reading: ExportReading,
+}
+
+#[derive(Args)]
+struct FileNoteOptions {
+	/// Markdown preset, independent of the reader window's saved settings.
+	#[arg(long, value_parser = ["gfm", "obsidian"], default_value = "gfm")]
+	markdown_flavor: String,
+	/// Workspace root for looking up note names and vault images.
+	#[arg(long, value_name = "DIR")]
+	workspace: Option<PathBuf>,
+}
+
+impl FileNoteOptions {
+	fn apply(self, out: &mut LaunchOptions) {
+		out.options.ofm = self.markdown_flavor == "obsidian";
+		out.options.highlight_marks = out.options.ofm;
+		out.workspace = self.workspace;
+	}
 }
 
 #[derive(Subcommand)]
@@ -793,6 +817,7 @@ fn apply_render_command(
 	args: RenderArgs,
 ) -> Result<()> {
 	out.mode = Mode::Render;
+	args.notes.apply(out);
 	out.path = Some(args.file);
 	out.output = Some(args.output);
 	if let Some(scale) = args.scale {
@@ -808,6 +833,7 @@ fn apply_render_command(
 
 fn apply_pdf_command(out: &mut LaunchOptions, args: PdfArgs) -> Result<()> {
 	out.mode = Mode::Pdf;
+	args.notes.apply(out);
 	out.security = crate::security::Security::local(args.document_trust);
 	for path in args.allow_local_image {
 		out.security.grant(crate::security::Resource::File(
@@ -1130,6 +1156,7 @@ impl LaunchOptions {
 			cjk: self.cjk_type.unwrap_or(markview_layout::style::CjkType::Sc),
 			options: self.options.clone(),
 			page: self.page.clone(),
+			workspace: self.workspace.clone(),
 			..Default::default()
 		}
 	}
@@ -1352,6 +1379,26 @@ mod tests {
 			};
 			assert!(text.contains(sub), "{text}");
 			assert!(text.contains("subcommand"), "{text}");
+		}
+	}
+
+	#[test]
+	fn file_exports_accept_obsidian_and_a_note_workspace() {
+		for (command, output) in [("render", "out.png"), ("pdf", "out.pdf")] {
+			assert!(!parse(&[command, "source.md", "-o", output]).options.ofm);
+			let options = parse(&[
+				command,
+				"source.md",
+				"-o",
+				output,
+				"--markdown-flavor",
+				"obsidian",
+				"--workspace",
+				"vault",
+			]);
+			assert!(options.options.ofm);
+			assert!(options.options.highlight_marks);
+			assert_eq!(options.workspace.as_deref(), Some(Path::new("vault")));
 		}
 	}
 

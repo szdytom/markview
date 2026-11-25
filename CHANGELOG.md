@@ -21,6 +21,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Added
+
+- Read and export Obsidian note sections and blocks embedded with `![[Note#Heading]]` and `![[Note#^block-id]]`, including relative resources from the source note and updates when it changes.
+
 ### Fixed
 
 - Use the first definition for duplicate footnotes, find definitions nested inside other footnotes, and omit notes referenced only by unused notes.

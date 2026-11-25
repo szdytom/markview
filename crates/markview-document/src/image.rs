@@ -6,8 +6,12 @@ pub enum ResourceBase {
 	/// The directory of the document that contains the resource.
 	#[default]
 	Document,
+	/// A document-relative resource from an embedded source.
+	Source(crate::embed::SourceId),
 	/// The open folder's root, as an Obsidian vault embed expects.
 	Vault,
+	/// A vault resource that falls back to the embedded note's directory.
+	VaultSource(crate::embed::SourceId),
 }
 
 /// One address together with the base it resolves against.

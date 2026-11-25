@@ -41,18 +41,27 @@ pub(super) fn key(
 		ImageSource::Resource(resource) => {
 			let prefix = match resource.base {
 				ResourceBase::Document => "",
+				ResourceBase::Source(_) => "embed:",
 				ResourceBase::Vault => "vault:",
+				ResourceBase::VaultSource(_) => "embed-vault:",
 			};
 			let mut key = format!("{prefix}{}", resource.address);
-			if !matches!(
+			if matches!(
+				resource.base,
+				ResourceBase::Source(_) | ResourceBase::VaultSource(_)
+			) || !matches!(
 				security.origin,
 				crate::security::Origin::Local(crate::security::Trust::Trusted)
 			) {
 				let base = match resource.base {
-					ResourceBase::Document => document,
-					ResourceBase::Vault => workspace
-						.or_else(|| document.parent())
-						.unwrap_or(document),
+					ResourceBase::Document | ResourceBase::Source(_) => {
+						document
+					}
+					ResourceBase::Vault | ResourceBase::VaultSource(_) => {
+						workspace
+							.or_else(|| document.parent())
+							.unwrap_or(document)
+					}
 				};
 				key.push('#');
 				key.push_str(&format!(
@@ -145,10 +154,12 @@ fn resolve_resource(
 		bail!("Absolute image paths are not allowed");
 	}
 	let base = match resource.base {
-		ResourceBase::Vault => workspace
+		ResourceBase::Vault | ResourceBase::VaultSource(_) => workspace
 			.or_else(|| document.parent())
 			.unwrap_or(Path::new(".")),
-		ResourceBase::Document => document.parent().unwrap_or(Path::new(".")),
+		ResourceBase::Document | ResourceBase::Source(_) => {
+			document.parent().unwrap_or(Path::new("."))
+		}
 	};
 	let path = base.join(path);
 	let path = fs::canonicalize(&path).unwrap_or(path);

@@ -821,7 +821,7 @@ fn run(
 			let snapshot = if let Some(loaded) = loaded {
 				export::png_snapshot_loaded(
 					loaded,
-					path,
+					export::PngSource::file(path).with_output(output),
 					prepared.options,
 					offline,
 					services,
@@ -830,7 +830,7 @@ fn run(
 				)
 			} else {
 				export::png_snapshot_with_services_and_workspace(
-					path,
+					export::PngSource::file(path).with_output(output),
 					prepared.options,
 					offline,
 					services,
@@ -1485,7 +1485,7 @@ mod security_tests {
 		);
 		assert!(matches!(outcome, ExportOutcome::Written { .. }));
 		let snapshot = export::png_snapshot_with_services_and_workspace(
-			&source,
+			export::PngSource::file(&source),
 			crate::layout::LayoutOptions {
 				ofm: true,
 				..crate::test_support::options()

@@ -63,6 +63,17 @@ both PDF and PNG. Standalone `$$` math blocks are enabled by default in both
 presets; use `--math-dollars-block false` to restore paragraph-based dollar math
 parsing.
 
+### Embed note sections and blocks
+
+Use `--markdown-flavor obsidian` with `pdf`, `render`, or `export --stdin` to
+include standalone `![[Note#Heading]]` and `![[Note#^block-id]]` embeds. File
+exports look beside their input, and buffer exports use `--base-dir` or the
+current directory. Use `--workspace DIR` for root-relative paths and unique
+note-name lookup across a workspace. Embed links remain visible when the target
+cannot be loaded. Buffer exports can read other notes when the host explicitly
+passes `--document-trust trusted`. Same-document embeds work with either trust
+level. `pdf --watch` also rebuilds when an embedded note changes.
+
 ## Editor integrations
 
 Editors need the effective template's font requirements, including families that

@@ -210,15 +210,37 @@ fn render_preview(args: LaunchOptions) -> Result<()> {
 		std::sync::Arc::new(|| {}),
 	);
 	engine.validate_stylesheet(&args.options.stylesheet)?;
-	let doc = markview_commonmark::parse(read_markdown(path)?);
+	let parse = markview_commonmark::parse_with(
+		read_markdown(path)?,
+		markview_commonmark::Dialect {
+			hard_breaks: args.options.hard_breaks,
+			highlight_marks: args.options.highlight_marks,
+			ofm: args.options.ofm,
+			grid_tables: args.options.grid_tables,
+			math_dollars_block: args.options.math_dollars_block,
+		},
+	);
+	let security = args.security.for_content(&parse.source);
+	let document =
+		crate::loaded::LoadedDocument::markdown(std::sync::Arc::new(parse));
+	let doc = crate::embed::Loader::default()
+		.prepare(
+			document,
+			crate::embed::InputPath::File(path),
+			args.workspace.as_deref(),
+			&security,
+			|| false,
+		)
+		.unwrap();
+	doc.ensure_export_destination(args.output.as_deref().unwrap())?;
 	let mut images = crate::images::Images::shared(
 		args.offline,
 		args.options.fonts.clone(),
 		&services,
 	);
-	images.set_security(crate::security::Security::local(
-		crate::security::Trust::Trusted,
-	));
+	images.set_security(security);
+	images.set_embed_paths(doc.embed_paths());
+	images.set_workspace(args.workspace.clone());
 	images.set_standalone_image(
 		crate::file::is_picture(path).then(|| path.to_path_buf()),
 	);

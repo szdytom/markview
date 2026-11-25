@@ -4,6 +4,7 @@
 //! inert file or a directory handed to the operating system, or an unknown
 //! local target that needs the reader's confirmation. There is no second path:
 //! every `open::that_detached` call on document content goes through here.
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
 /// What clicking a link asks for, before any I/O happens.
@@ -21,6 +22,71 @@ pub(super) enum Target {
 
 /// Markdown documents the reader opens itself.
 const MARKDOWN: &[&str] = &["md", "markdown", "mdown"];
+
+pub(crate) fn is_markdown(path: &Path) -> bool {
+	path.extension()
+		.and_then(|extension| extension.to_str())
+		.is_some_and(|extension| {
+			MARKDOWN
+				.iter()
+				.any(|known| known.eq_ignore_ascii_case(extension))
+		})
+}
+
+pub(crate) fn workspace_target(target: &str) -> Option<Cow<'_, str>> {
+	if target.is_empty() || url::Url::parse(target).is_ok() {
+		return None;
+	}
+	let decoded = percent_encoding::percent_decode_str(target)
+		.decode_utf8()
+		.ok()?;
+	let path = Path::new(decoded.as_ref());
+	(!path.has_root()
+		&& !matches!(
+			path.components().next(),
+			Some(std::path::Component::Prefix(_))
+		))
+	.then_some(decoded)
+}
+
+pub(crate) fn workspace_candidates<'a>(
+	name: &'a Path,
+	current: &'a Path,
+	root: Option<&'a Path>,
+) -> impl Iterator<Item = PathBuf> + 'a {
+	std::iter::once(current)
+		.chain(root.filter(|root| *root != current))
+		.flat_map(move |base| {
+			let path = base.join(name);
+			let mut suffixed = path.as_os_str().to_owned();
+			suffixed.push(".md");
+			[path, PathBuf::from(suffixed)]
+		})
+}
+
+pub(crate) fn unique_workspace_match<'a>(
+	name: &Path,
+	paths: impl Iterator<Item = &'a Path>,
+) -> Option<&'a Path> {
+	let name = if is_markdown(name) {
+		name.to_owned()
+	} else {
+		let mut suffixed = name.as_os_str().to_owned();
+		suffixed.push(".md");
+		PathBuf::from(suffixed)
+	};
+	let mut matches = paths.filter(|path| path.ends_with(&name));
+	let first = matches.next()?;
+	matches.next().is_none().then_some(first)
+}
+
+pub(crate) fn workspace_excluded(path: &Path, directory: bool) -> bool {
+	let name = path.file_name().unwrap().to_string_lossy();
+	name.starts_with('.')
+		|| (directory
+			&& ["node_modules", "target", "vendor", "__pycache__"]
+				.contains(&name.as_ref()))
+}
 
 /// Types a system viewer consumes as data. None of them is a script or an
 /// installer, and each is handled by a renderer rather than a shell. `.svg` is

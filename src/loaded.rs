@@ -9,6 +9,11 @@ use std::sync::Arc;
 pub enum LoadedDocument {
 	/// Parsed Markdown: the document plus its original text and source map.
 	Markdown(Arc<MarkdownParse>),
+	/// Markdown rendered with its note embeds resolved.
+	Composed {
+		parse: Arc<MarkdownParse>,
+		composition: Arc<crate::embed::Composition>,
+	},
 	/// A semantic document without original source, as produced by HTML, and
 	/// the size of its semantic text plus its input identity.
 	Semantic {
@@ -25,7 +30,7 @@ impl LoadedDocument {
 		self: &Arc<Self>,
 		dialect: markview_commonmark::Dialect,
 	) -> Arc<Self> {
-		if let Self::Markdown(parse) = self.as_ref()
+		if let Some(parse) = self.markdown_parse()
 			&& parse.dialect != dialect
 		{
 			return Self::markdown(Arc::new(markview_commonmark::parse_with(
@@ -38,6 +43,35 @@ impl LoadedDocument {
 
 	pub fn markdown(parse: Arc<MarkdownParse>) -> Arc<Self> {
 		Arc::new(Self::Markdown(parse))
+	}
+
+	pub(crate) fn composed(
+		parse: Arc<MarkdownParse>,
+		composition: crate::embed::Composition,
+	) -> Arc<Self> {
+		Arc::new(Self::Composed {
+			parse,
+			composition: Arc::new(composition),
+		})
+	}
+
+	pub(crate) fn markdown_parse(&self) -> Option<&Arc<MarkdownParse>> {
+		match self {
+			Self::Markdown(parse) | Self::Composed { parse, .. } => Some(parse),
+			Self::Semantic { .. } => None,
+		}
+	}
+
+	pub(crate) fn composition(&self) -> Option<&crate::embed::Composition> {
+		match self {
+			Self::Composed { composition, .. } => Some(composition),
+			_ => None,
+		}
+	}
+
+	pub(crate) fn embed_paths(&self) -> Option<Arc<crate::embed::SourcePaths>> {
+		self.composition()
+			.map(|composition| composition.paths.clone())
 	}
 
 	#[cfg(test)]
@@ -72,16 +106,37 @@ impl LoadedDocument {
 		})
 	}
 
+	pub(crate) fn ensure_export_destination(
+		&self,
+		output: &std::path::Path,
+	) -> anyhow::Result<()> {
+		if let Some(composition) = self.composition()
+			&& let Some(path) = composition
+				.dependencies
+				.source_files()
+				.find(|path| crate::file::same_file(path, output))
+		{
+			anyhow::bail!(
+				"Cannot export over an embedded source file: {}",
+				path.display()
+			);
+		}
+		Ok(())
+	}
+
 	pub fn document(&self) -> &Document {
 		match self {
 			Self::Markdown(parse) => &parse.document,
+			Self::Composed { composition, .. } => &composition.document,
 			Self::Semantic { document, .. } => document,
 		}
 	}
 
 	pub fn source(&self) -> Option<&str> {
 		match self {
-			Self::Markdown(parse) => Some(&parse.source),
+			Self::Markdown(parse) | Self::Composed { parse, .. } => {
+				Some(&parse.source)
+			}
 			Self::Semantic { .. } => None,
 		}
 	}
@@ -92,6 +147,19 @@ impl LoadedDocument {
 			Self::Markdown(parse) => {
 				markview_document::stable_fingerprint(parse.source.as_bytes())
 			}
+			Self::Composed { parse, composition } => {
+				let host = markview_document::stable_fingerprint(
+					parse.source.as_bytes(),
+				);
+				if composition.origins.is_empty() {
+					host
+				} else {
+					markview_document::fingerprint(&(
+						host,
+						composition.document.content_key(),
+					))
+				}
+			}
 			Self::Semantic { input, .. } => *input,
 		}
 	}
@@ -99,7 +167,7 @@ impl LoadedDocument {
 	/// The front-end and parse-option version that produced this document.
 	pub fn frontend_version(&self) -> u64 {
 		match self {
-			Self::Markdown(parse) => {
+			Self::Markdown(parse) | Self::Composed { parse, .. } => {
 				2 + u64::from(parse.dialect.hard_breaks)
 					+ (u64::from(parse.dialect.highlight_marks) << 1)
 					+ (u64::from(parse.dialect.ofm) << 2)
@@ -117,6 +185,10 @@ impl LoadedDocument {
 	pub fn size(&self) -> usize {
 		match self {
 			Self::Markdown(parse) => parse.source.len(),
+			Self::Composed { parse, composition } => parse
+				.source
+				.len()
+				.saturating_add(composition.imported_size()),
 			Self::Semantic { size, .. } => *size,
 		}
 	}

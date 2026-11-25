@@ -218,3 +218,103 @@ fn table_escaped_pipe_still_supplies_an_embed_label() {
 	let image = images.into_iter().next().expect("expected image");
 	assert_eq!(image.alt, "Caption");
 }
+
+#[test]
+fn standalone_note_embed_requests_keep_their_link_fallbacks_and_source_ranges()
+{
+	use markview_document::embed::{NoteEmbed, Selector};
+
+	let cases = [
+		(
+			"![[Other % Note#^Block-ID|Block]]",
+			Some(("Other %25 Note", Selector::Block("Block-ID".into()))),
+		),
+		(
+			"![[Other Note#A heading]]",
+			Some(("Other Note", Selector::Section("A heading".into()))),
+		),
+		(
+			"![[#Parent#Child]]",
+			Some(("", Selector::Section("Parent#Child".into()))),
+		),
+		("![[#^here]]", Some(("", Selector::Block("here".into())))),
+		(
+			"> ![[Note#Section]]",
+			Some(("Note", Selector::Section("Section".into()))),
+		),
+		("![[Note]]", None),
+		("![[Note^id]]", None),
+		("![[Note#^]]", None),
+		("![[image.png#section]]", None),
+		("[[Note#section]]", None),
+		("Before ![[Note#section]]", None),
+		("![[Note#section]] after", None),
+		("![[Note#section]]\nsecond line", None),
+		("`![[Note#section]]`", None),
+		("\\![[Note#section]]", None),
+	];
+	for (source, expected) in cases {
+		let parsed = parse_with(source, ofm());
+		let expected = expected.map(|(note, selector)| NoteEmbed {
+			note: note.to_owned(),
+			selector,
+		});
+		let mut found = None;
+		for root in parsed.blocks() {
+			markview_document::visit_blocks(root, &mut |block| {
+				if let Some(request) = block.note_embed() {
+					assert!(
+						matches!(block.kind(), BlockKind::Paragraph(text) if text.iter().any(|part| part.link.is_some()))
+					);
+					let range = parsed.block_source(block).unwrap();
+					assert!(source[range].contains("![["));
+					found = Some(request.clone());
+				}
+			});
+		}
+		assert_eq!(found, expected, "{source}");
+		assert_eq!(
+			parsed.document.has_note_embeds(),
+			expected.is_some(),
+			"{source}"
+		);
+		assert!(
+			!parse_with(source, Dialect::default())
+				.document
+				.has_note_embeds(),
+			"{source}"
+		);
+	}
+}
+
+#[test]
+fn incremental_edits_preserve_embed_requests_and_shift_the_fallbacks() {
+	let before =
+		parse_with("Intro\n\n![[Note#First Section]]\n\nTail\n", ofm());
+	for source in [
+		"Longer intro\n\n![[Note#First Section]]\n\nTail\n",
+		"Intro\n\n![[Note#^Different-ID]]\n\nTail\n",
+		"Intro\n\nPrefix ![[Note#First Section]]\n\nTail\n",
+	] {
+		let incremental = markview_commonmark::parse_incremental(
+			&before,
+			source.into(),
+			ofm(),
+		)
+		.unwrap();
+		let full = parse_with(source, ofm());
+		assert_eq!(incremental.blocks(), full.blocks(), "{source}");
+		assert_eq!(
+			incremental.document.content_key(),
+			full.document.content_key()
+		);
+		for (incremental_block, full_block) in
+			incremental.blocks().iter().zip(full.blocks())
+		{
+			assert_eq!(
+				incremental.block_source(incremental_block),
+				full.block_source(full_block)
+			);
+		}
+	}
+}

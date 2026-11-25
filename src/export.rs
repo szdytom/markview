@@ -67,7 +67,7 @@ pub(crate) struct PdfRequest {
 	pub(crate) metadata: MetadataOverrides,
 	pub(crate) links: bool,
 	pub(crate) offline: bool,
-	/// The open folder root, used by Obsidian vault image embeds.
+	/// The open folder root, used by Obsidian note and image embeds.
 	pub(crate) workspace: Option<PathBuf>,
 	/// A document already parsed by a front end, such as a web page.
 	pub(crate) loaded: Option<Arc<crate::loaded::LoadedDocument>>,
@@ -97,6 +97,33 @@ pub(crate) fn geometry(settings: &ExportSettings) -> Result<PageGeometry> {
 	PageGeometry::from_style(&page_style(settings))
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct PngSource<'a> {
+	input: crate::embed::InputPath<'a>,
+	output: Option<&'a Path>,
+}
+
+impl<'a> PngSource<'a> {
+	pub fn file(path: &'a Path) -> Self {
+		Self {
+			input: crate::embed::InputPath::File(path),
+			output: None,
+		}
+	}
+
+	pub fn buffer(path: &'a Path) -> Self {
+		Self {
+			input: crate::embed::InputPath::Buffer(path),
+			output: None,
+		}
+	}
+
+	pub fn with_output(mut self, output: &'a Path) -> Self {
+		self.output = Some(output);
+		self
+	}
+}
+
 /// Lays the document out once at the export's own measure. This is the PNG
 /// half of the work, and it runs on the exporting thread.
 #[cfg(test)]
@@ -122,24 +149,30 @@ pub(crate) fn png_snapshot_with_services(
 	security: crate::security::Security,
 ) -> Result<LayoutSnapshot> {
 	png_snapshot_with_services_and_workspace(
-		path, options, offline, services, security, None,
+		PngSource::file(path),
+		options,
+		offline,
+		services,
+		security,
+		None,
 	)
 }
 
 pub(crate) fn png_snapshot_with_services_and_workspace(
-	path: &Path,
+	source: PngSource<'_>,
 	options: LayoutOptions,
 	offline: bool,
 	services: std::sync::Arc<crate::services::Services>,
 	security: crate::security::Security,
 	workspace: Option<PathBuf>,
 ) -> Result<LayoutSnapshot> {
-	let text = read_markdown(path)?;
+	let text = read_markdown(source.input.path())?;
 	png_snapshot_text_with_workspace(
-		path, &text, options, offline, services, security, workspace,
+		source, &text, options, offline, services, security, workspace,
 	)
 }
 
+#[cfg(test)]
 pub(crate) fn png_snapshot_text(
 	path: &Path,
 	text: &str,
@@ -149,12 +182,18 @@ pub(crate) fn png_snapshot_text(
 	security: crate::security::Security,
 ) -> Result<LayoutSnapshot> {
 	png_snapshot_text_with_workspace(
-		path, text, options, offline, services, security, None,
+		PngSource::buffer(path),
+		text,
+		options,
+		offline,
+		services,
+		security,
+		None,
 	)
 }
 
 pub(crate) fn png_snapshot_text_with_workspace(
-	path: &Path,
+	source: PngSource<'_>,
 	text: &str,
 	options: LayoutOptions,
 	offline: bool,
@@ -162,7 +201,7 @@ pub(crate) fn png_snapshot_text_with_workspace(
 	security: crate::security::Security,
 	workspace: Option<PathBuf>,
 ) -> Result<LayoutSnapshot> {
-	let document = markview_commonmark::parse_with(
+	let parse = Arc::new(markview_commonmark::parse_with(
 		text.to_owned(),
 		markview_commonmark::Dialect {
 			hard_breaks: options.hard_breaks,
@@ -171,17 +210,23 @@ pub(crate) fn png_snapshot_text_with_workspace(
 			grid_tables: options.grid_tables,
 			math_dollars_block: options.math_dollars_block,
 		},
-	);
-	let security = security.for_content(&document.source);
+	));
+	let security = security.for_content(&parse.source);
 	png_snapshot_document(
-		&document, path, options, offline, services, security, workspace,
+		crate::loaded::LoadedDocument::markdown(parse),
+		source,
+		options,
+		offline,
+		services,
+		security,
+		workspace,
 	)
 }
 
 /// Lays out a pre-parsed document for a PNG export.
 pub(crate) fn png_snapshot_loaded(
 	loaded: Arc<crate::loaded::LoadedDocument>,
-	path: &Path,
+	source: PngSource<'_>,
 	options: LayoutOptions,
 	offline: bool,
 	services: Arc<crate::services::Services>,
@@ -196,20 +241,33 @@ pub(crate) fn png_snapshot_loaded(
 		math_dollars_block: options.math_dollars_block,
 	});
 	png_snapshot_document(
-		&loaded, path, options, offline, services, security, workspace,
+		loaded, source, options, offline, services, security, workspace,
 	)
 }
 
 /// Lays out one already-parsed document for a PNG export.
 fn png_snapshot_document(
-	document: &markview_document::Document,
-	path: &Path,
+	document: Arc<crate::loaded::LoadedDocument>,
+	source: PngSource<'_>,
 	options: LayoutOptions,
 	offline: bool,
 	services: Arc<crate::services::Services>,
 	security: crate::security::Security,
 	workspace: Option<PathBuf>,
 ) -> Result<LayoutSnapshot> {
+	let document = crate::embed::Loader::default()
+		.prepare(
+			document,
+			source.input,
+			workspace.as_deref(),
+			&security,
+			|| false,
+		)
+		.unwrap();
+	if let Some(output) = source.output {
+		document.ensure_export_destination(output)?;
+	}
+	let path = source.input.path();
 	let mut engine = LayoutEngine::with_executor(
 		services.handle.cpu.clone(),
 		std::sync::Arc::new(|| {}),
@@ -217,12 +275,13 @@ fn png_snapshot_document(
 	engine.validate_stylesheet(&options.stylesheet)?;
 	let mut images = Images::shared(offline, options.fonts.clone(), &services);
 	images.set_security(security);
+	images.set_embed_paths(document.embed_paths());
 	images.set_workspace(workspace);
 	images.set_standalone_image(
 		crate::file::is_picture(path).then(|| path.to_path_buf()),
 	);
 	images.prepare(
-		document,
+		&document,
 		path,
 		1,
 		false,
@@ -236,12 +295,12 @@ fn png_snapshot_document(
 		}
 	}
 	let mut snapshot =
-		engine.layout_with_images(document, &options, &images.snapshot);
+		engine.layout_with_images(&document, &options, &images.snapshot);
 	// Highlighting arrives from a worker; an export has no later frame to
 	// settle it, so it waits and keeps the colors.
 	if engine.wait_highlights() {
 		snapshot =
-			engine.layout_with_images(document, &options, &images.snapshot);
+			engine.layout_with_images(&document, &options, &images.snapshot);
 	}
 	Ok(snapshot)
 }

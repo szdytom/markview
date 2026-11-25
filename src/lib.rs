@@ -7,6 +7,7 @@ pub mod app;
 mod benchmark;
 mod cli;
 mod diagnostics;
+mod embed;
 mod export;
 mod export_cli;
 mod file;

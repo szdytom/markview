@@ -23,13 +23,8 @@ pub(super) struct Child {
 	excluded: bool,
 }
 
-fn excluded(path: &Path, directory: bool) -> bool {
-	let name = path.file_name().unwrap().to_string_lossy();
-	name.starts_with('.')
-		|| (directory
-			&& ["node_modules", "target", "vendor", "__pycache__"]
-				.contains(&name.as_ref()))
-}
+pub(super) use crate::link::is_markdown as markdown;
+use crate::link::workspace_excluded as excluded;
 
 fn list(
 	path: &Path,
@@ -385,49 +380,22 @@ impl Tree {
 	}
 
 	pub fn resolve(&self, target: &str, current: &Path) -> Option<PathBuf> {
-		if target.is_empty() || url::Url::parse(target).is_ok() {
-			return None;
-		}
-		let decoded = percent_encoding::percent_decode_str(target)
-			.decode_utf8()
-			.ok()?;
+		let decoded = crate::link::workspace_target(target)?;
 		let name = Path::new(decoded.as_ref());
-		if name.is_absolute() {
-			return None;
-		}
-		let candidates = [current.join(name), self.root.join(name)];
-		for path in candidates {
-			let mut suffixed = path.as_os_str().to_owned();
-			suffixed.push(".md");
-			let paths = [path.clone(), PathBuf::from(suffixed)];
-			for candidate in paths {
-				if candidate.exists() {
-					return Some(candidate.canonicalize().unwrap_or(candidate));
-				}
+		for candidate in
+			crate::link::workspace_candidates(name, current, Some(&self.root))
+		{
+			if candidate.exists() {
+				return Some(candidate.canonicalize().unwrap_or(candidate));
 			}
 		}
-		let with_extension = if markdown(name) {
-			name.to_owned()
-		} else {
-			let mut suffixed = name.as_os_str().to_owned();
-			suffixed.push(".md");
-			PathBuf::from(suffixed)
-		};
-		let mut matches = self
+		let paths = self
 			.entries
 			.iter()
-			.filter(|e| !e.directory && e.path.ends_with(&with_extension));
-		let first = matches.next()?;
-		matches.next().is_none().then(|| first.path.clone())
+			.filter(|entry| !entry.directory)
+			.map(|entry| entry.path.as_path());
+		crate::link::unique_workspace_match(name, paths).map(Path::to_owned)
 	}
-}
-
-pub(super) fn markdown(path: &Path) -> bool {
-	path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
-		["md", "markdown", "mdown"]
-			.iter()
-			.any(|x| e.eq_ignore_ascii_case(x))
-	})
 }
 
 #[derive(Default)]

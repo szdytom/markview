@@ -2,7 +2,7 @@
 use crate::{
 	layout::LayoutOptions,
 	state::{PendingAnchor, ReaderSession, ReaderTab},
-	worker::Request,
+	worker::{EmbedBaseline, Request},
 };
 use std::{
 	path::PathBuf,
@@ -573,6 +573,15 @@ impl Tabs {
 			)
 			.then(|| self.session.document.clone())
 			.flatten(),
+			embed_baseline: (self.session.accepted_revision != 0
+				&& self.session.accepted_revision
+					== self.session.content_version)
+				.then(|| match self.session.document.as_deref() {
+					Some(document) => EmbedBaseline::from_document(document),
+					None => EmbedBaseline::after_release(
+						self.session.accepted_content_id,
+					),
+				}),
 			workspace: None,
 			options,
 			requested: Instant::now(),

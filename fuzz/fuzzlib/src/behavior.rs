@@ -248,7 +248,7 @@ pub fn document(p: &markview_commonmark::MarkdownParse) -> Value {
       InlineKind::Math{latex,display}=>json!(["math",latex,display]),
       InlineKind::LineBreak(b)=>json!(["break",*b as u32]),
       InlineKind::FootnoteRef(f)=>json!(["note",f.definition.as_str(),f.number,f.occurrence.get()]),
-      InlineKind::Image(img)=>json!(["image",match &img.source {ImageSource::Resource(r)=>json!(["resource",r.address,r.base as u32]),ImageSource::Diagram(d)=>json!(["diagram",d.language,d.source])},img.alt,img.title,img.width,img.height]),
+      InlineKind::Image(img)=>json!(["image",match &img.source {ImageSource::Resource(r)=>json!(["resource",r.address,match r.base {ResourceBase::Document=>json!(0),ResourceBase::Vault=>json!(1),ResourceBase::Source(id)=>json!(["source",id.0]),ResourceBase::VaultSource(id)=>json!(["vault",id.0])}]),ImageSource::Diagram(d)=>json!(["diagram",d.language,d.source])},img.alt,img.title,img.width,img.height]),
      };
      let s=&i.style;
      json!({"kind":kind,"style":[s.bold,s.italic,s.strike,s.mark,s.code,s.superscript,s.subscript],"color":s.color.map(|c|c.0),"link":i.link.as_ref().map(|l|(l.as_str(),l.occurrence().get()))})

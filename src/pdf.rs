@@ -76,7 +76,9 @@ pub(crate) fn export_with_services(
 		));
 	}
 	let text = read_markdown(&args.path)?;
-	export_text(args, &text, services, || Ok(()))
+	Exporter::with_services(args, services)?
+		.export_source(&text, false, true, || Ok(()))?
+		.context("the export produced no output")
 }
 
 /// Exports a host's text using the original path only for resources.
@@ -87,7 +89,7 @@ pub(crate) fn export_text(
 	before_write: impl Fn() -> Result<()>,
 ) -> Result<ExportStats> {
 	Exporter::with_services(args, services)?
-		.export_source(text, true, before_write)?
+		.export_source(text, true, true, before_write)?
 		.context("the export produced no output")
 }
 
@@ -102,7 +104,9 @@ fn watch(exporter: &mut Exporter, rx: mpsc::Receiver<()>) -> Result<()> {
 				rebuild(exporter, false);
 			}
 			Err(mpsc::RecvTimeoutError::Timeout) => {
-				if exporter.image_changed() {
+				if exporter.image_changed()
+					|| exporter.embed_dependencies.changed()
+				{
 					rebuild(exporter, true);
 				}
 			}
@@ -137,6 +141,7 @@ pub(crate) struct ExportStats {
 struct Exporter {
 	security: crate::security::Security,
 	path: PathBuf,
+	workspace: Option<PathBuf>,
 	output: PathBuf,
 	options: LayoutOptions,
 	geometry: PageGeometry,
@@ -154,6 +159,8 @@ struct Exporter {
 	dirty: bool,
 	document: Option<Arc<markview_commonmark::MarkdownParse>>,
 	revision: u64,
+	embeds: crate::embed::Loader,
+	embed_dependencies: crate::embed::Dependencies,
 }
 
 impl Exporter {
@@ -184,6 +191,7 @@ impl Exporter {
 		Ok(Self {
 			security: args.security.clone(),
 			path: args.path.clone(),
+			workspace: args.workspace.clone(),
 			output,
 			options,
 			geometry,
@@ -196,6 +204,8 @@ impl Exporter {
 			dirty: true,
 			document: None,
 			revision: 0,
+			embeds: Default::default(),
+			embed_dependencies: Default::default(),
 		})
 	}
 
@@ -206,7 +216,7 @@ impl Exporter {
 			self.dirty = true;
 		}
 		let text = read_markdown(&self.path)?;
-		self.export_source(&text, force, || Ok(()))
+		self.export_source(&text, false, force, || Ok(()))
 	}
 
 	/// Follows a retargeted symlink to the picture a watched export displays.
@@ -218,6 +228,7 @@ impl Exporter {
 	fn export_source(
 		&mut self,
 		text: &str,
+		buffer: bool,
 		force: bool,
 		before_write: impl Fn() -> Result<()>,
 	) -> Result<Option<ExportStats>> {
@@ -267,11 +278,18 @@ impl Exporter {
 			.as_ref()
 			.expect("a document is parsed before a layout")
 			.clone();
-		self.prepare_images(
-			&document,
-			self.security.for_content(&document.source),
-		);
-		Ok(Some(self.write(&document, started, before_write)?))
+		let security = self.security.for_content(&document.source);
+		let document = self.prepare_document(
+			crate::loaded::LoadedDocument::markdown(document),
+			security,
+			buffer,
+		)?;
+		let stats = self.write(&document, started, before_write)?;
+		self.embed_dependencies = document
+			.composition()
+			.map(|composition| composition.dependencies.clone())
+			.unwrap_or_default();
+		Ok(Some(stats))
 	}
 
 	/// Writes a document that already has no source text, such as a web page.
@@ -285,10 +303,40 @@ impl Exporter {
 			self.path.display()
 		);
 		let started = Instant::now();
-		let document = loaded.document();
 		self.revision += 1;
-		self.prepare_images(document, self.security.clone());
-		self.write(document, started, || Ok(()))
+		let security = loaded.source().map_or_else(
+			|| self.security.clone(),
+			|source| self.security.for_content(source),
+		);
+		let document = self.prepare_document(loaded, security, false)?;
+		self.write(&document, started, || Ok(()))
+	}
+
+	fn prepare_document(
+		&mut self,
+		loaded: Arc<crate::loaded::LoadedDocument>,
+		security: crate::security::Security,
+		buffer: bool,
+	) -> Result<Arc<crate::loaded::LoadedDocument>> {
+		let input = if buffer {
+			crate::embed::InputPath::Buffer(&self.path)
+		} else {
+			crate::embed::InputPath::File(&self.path)
+		};
+		let document = self
+			.embeds
+			.prepare(
+				loaded,
+				input,
+				self.workspace.as_deref(),
+				&security,
+				|| false,
+			)
+			.unwrap();
+		document.ensure_export_destination(&self.output)?;
+		self.images.set_embed_paths(document.embed_paths());
+		self.prepare_images(&document, security);
+		Ok(document)
 	}
 
 	/// Resolves the document's images and waits for every decode.
@@ -317,7 +365,7 @@ impl Exporter {
 	/// Lays the document out at the export measure and writes the PDF.
 	fn write(
 		&mut self,
-		document: &markview_document::Document,
+		document: &crate::loaded::LoadedDocument,
 		started: Instant,
 		before_write: impl Fn() -> Result<()>,
 	) -> Result<ExportStats> {
@@ -336,7 +384,10 @@ impl Exporter {
 			);
 		}
 		let pagination = paginate(document, &snapshot, &self.geometry);
-		let metadata = self.metadata_of(document);
+		let source = document
+			.markdown_parse()
+			.map_or(document.document(), |parse| &parse.document);
+		let metadata = self.metadata_of(source);
 		let bytes = self.renderer.export(&Export {
 			outline: document.outline_entries(),
 			snapshot: &snapshot,
@@ -502,6 +553,181 @@ mod tests {
 		));
 		request.loaded = Some(loaded.clone());
 		(request, output, loaded)
+	}
+
+	#[test]
+	fn note_embed_pdf_cannot_replace_an_embedded_note() {
+		let dir = crate::test_support::TestDir::new();
+		let host = dir.path().join("A.md");
+		let note = dir.path().join("B.md");
+		let original = "# Section\n\nProtected embedded source";
+		fs::write(&host, "![[B#Section]]").unwrap();
+		fs::write(&note, original).unwrap();
+		let output = dir.path().join("out.pdf");
+		let mut request = options(&host, &output);
+		request.options.ofm = true;
+		export_once(&request).unwrap();
+		let pdf = lopdf::Document::load(&output).unwrap();
+		assert!(
+			pdf.extract_text(&[1])
+				.unwrap()
+				.contains("Protected embedded source")
+		);
+
+		request.output = note.clone();
+		let result = export_once(&request);
+		assert_eq!(
+			fs::read(&note).unwrap().get(..5),
+			Some(&original.as_bytes()[..5]),
+			"the export replaced the embedded source"
+		);
+		assert_eq!(fs::read_to_string(&note).unwrap(), original);
+		assert!(result.is_err());
+	}
+
+	#[test]
+	fn note_embed_export_protects_an_unreadable_target() {
+		let dir = crate::test_support::TestDir::new();
+		let host = dir.path().join("A.md");
+		let note = dir.path().join("B.md");
+		let original = b"not UTF-8: \xff";
+		fs::write(&host, "![[B#Section]]").unwrap();
+		fs::write(&note, original).unwrap();
+		assert!(crate::file::read_document(&note).is_err());
+		let mut request = options(&host, &note);
+		request.options.ofm = true;
+		let result = export_once(&request);
+		assert_eq!(
+			fs::read(&note).unwrap().get(..5),
+			Some(&original[..5]),
+			"export overwrote the unreadable note"
+		);
+		assert_eq!(fs::read(&note).unwrap(), original);
+		assert!(result.is_err());
+	}
+
+	#[test]
+	fn note_embed_buffer_filename_does_not_shadow_disk_notes() {
+		let dir = crate::test_support::TestDir::new();
+		let virtual_path = dir.path().join("Untitled.md");
+		fs::write(&virtual_path, "Untitled external marker ^leaf").unwrap();
+		fs::write(dir.path().join("Other.md"), "Other external marker ^leaf")
+			.unwrap();
+		let mut request = options(&virtual_path, &dir.path().join("out.pdf"));
+		request.options.ofm = true;
+		request.security =
+			crate::security::Security::local(crate::security::Trust::Trusted);
+		let services = Arc::new(crate::services::Services::new(2));
+		export_text(
+			&request,
+			"![[Other#^leaf]]\n\n![[Untitled#^leaf]]",
+			services,
+			|| Ok(()),
+		)
+		.unwrap();
+		let pdf = lopdf::Document::load(&request.output).unwrap();
+		let text = pdf.extract_text(&[1]).unwrap();
+		assert!(text.contains("Other external marker"), "{text}");
+		assert!(text.contains("Untitled external marker"), "{text}");
+	}
+
+	#[test]
+	fn note_embed_pdf_title_uses_the_host_note() {
+		let dir = crate::test_support::TestDir::new();
+		fs::write(dir.path().join("B.md"), "# Excerpt\n\nImported passage")
+			.unwrap();
+		let path = dir.path().join("A.md");
+		let output = dir.path().join("A.pdf");
+		for (heading, expected) in
+			[("# Host Title\n\n", "Host Title"), ("", "A")]
+		{
+			fs::write(
+				&path,
+				format!("![[B#Excerpt]]\n\n{heading}Host passage"),
+			)
+			.unwrap();
+			let mut request = options(&path, &output);
+			request.options.ofm = true;
+			export_once(&request).unwrap();
+			let pdf = lopdf::Document::load(&output).unwrap();
+			let text = pdf.extract_text(&[1]).unwrap();
+			assert!(
+				text.contains("Imported passage")
+					&& text.contains("Host passage"),
+				"{text}"
+			);
+			let info_id =
+				pdf.trailer.get(b"Info").unwrap().as_reference().unwrap();
+			let info = pdf.get_object(info_id).unwrap().as_dict().unwrap();
+			assert_eq!(
+				lopdf::decode_text_string(info.get(b"Title").unwrap()).unwrap(),
+				expected
+			);
+		}
+	}
+
+	#[test]
+	fn note_embed_pdf_source_links_keep_their_base_in_another_directory() {
+		let dir = crate::test_support::TestDir::new();
+		let notes = dir.path().join("notes");
+		let out = dir.path().join("out");
+		fs::create_dir(&notes).unwrap();
+		fs::create_dir(&out).unwrap();
+		let path = notes.join("A.md");
+		let neighbor = notes.join("neighbor.md");
+		fs::write(&neighbor, "Neighbor").unwrap();
+		fs::write(
+			&path,
+			"![[#Included]]\n\n# Included\n\n[Next](neighbor.md) and [Local](#other)\n\n# Other\n\nOther section",
+		).unwrap();
+		let mut request = options(&path, &out.join("A.pdf"));
+		request.options.ofm = true;
+		export_once(&request).unwrap();
+		let pdf = lopdf::Document::load(&request.output).unwrap();
+		let annotations =
+			pdf.get_page_annotations(pdf.get_pages()[&1]).unwrap();
+		assert_eq!(annotations.len(), 4);
+		let uris: Vec<_> = annotations
+			.iter()
+			.filter_map(|annotation| {
+				annotation
+					.get(b"A")
+					.ok()?
+					.as_dict()
+					.ok()?
+					.get(b"URI")
+					.ok()?
+					.as_str()
+					.ok()
+			})
+			.collect();
+		assert_eq!(uris.len(), 2, "bare fragments stay inside the PDF");
+		let expected =
+			url::Url::from_file_path(neighbor.canonicalize().unwrap()).unwrap();
+		assert_eq!(uris, [expected.as_str().as_bytes(), b"neighbor.md"]);
+	}
+
+	#[test]
+	fn note_embed_rebuilds_a_watched_pdf_from_an_unchanged_host() {
+		let dir = crate::test_support::TestDir::new();
+		let path = dir.path().join("A.md");
+		let note = dir.path().join("B.md");
+		let output = dir.path().join("out.pdf");
+		fs::write(&path, "![[B#Section]]").unwrap();
+		fs::write(&note, "# Section\n\nOriginal contents").unwrap();
+		let mut request = options(&path, &output);
+		request.options.ofm = true;
+		let mut exporter = Exporter::new(&request).unwrap();
+		assert!(exporter.export(false).unwrap().is_some());
+		assert!(!exporter.embed_dependencies.changed());
+		fs::write(&note, "# Section\n\nChanged contents in the target")
+			.unwrap();
+		assert!(exporter.embed_dependencies.changed());
+		rebuild(&mut exporter, true);
+		let output = lopdf::Document::load(&output).unwrap();
+		let text = output.extract_text(&[1]).unwrap();
+		assert!(text.contains("Changed contents in the target"), "{text}");
+		assert!(!exporter.embed_dependencies.changed());
 	}
 
 	#[test]

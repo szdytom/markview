@@ -89,6 +89,8 @@ impl DocumentBuilder {
 		self.next_block = self.next_block.saturating_add(1);
 		Block {
 			anchors,
+			list_item_anchor: None,
+			embed: None,
 			id,
 			content_key: ContentKey(0),
 			kind,
@@ -413,8 +415,12 @@ fn seal(block: &mut Block, seen: &mut HashSet<BlockId>) {
 	block.content_key = if block.anchors.is_empty() {
 		key
 	} else {
-		ContentKey(fingerprint(&(key, &block.anchors)))
+		ContentKey(fingerprint(&(key, &block.anchors, block.list_item_anchor)))
 	};
+	block.content_key =
+		block.embed.as_ref().map_or(block.content_key, |embed| {
+			ContentKey(fingerprint(&(block.content_key, embed)))
+		});
 }
 #[cfg(test)]
 mod proptests;

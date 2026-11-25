@@ -52,6 +52,34 @@ pub fn open_nonblocking(path: &Path) -> io::Result<fs::File> {
 	fs::File::open(path)
 }
 
+/// Metadata identity and content times for a cached file.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FileVersion {
+	pub size: u64,
+	modified: Option<std::time::SystemTime>,
+	created: Option<std::time::SystemTime>,
+	#[cfg(unix)]
+	unix: (u64, u64, i64, i64),
+}
+
+pub fn file_version(path: &Path) -> Option<FileVersion> {
+	#[cfg(unix)]
+	use std::os::unix::fs::MetadataExt;
+	let metadata = fs::metadata(path).ok()?;
+	Some(FileVersion {
+		size: metadata.len(),
+		modified: metadata.modified().ok(),
+		created: metadata.created().ok(),
+		#[cfg(unix)]
+		unix: (
+			metadata.dev(),
+			metadata.ino(),
+			metadata.ctime(),
+			metadata.ctime_nsec(),
+		),
+	})
+}
+
 /// Whether two paths name the same file, including through symlinks and hard
 /// links. Metadata identity keeps this from opening a FIFO or device.
 pub fn same_file(first: &Path, second: &Path) -> bool {

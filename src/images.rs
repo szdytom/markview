@@ -17,7 +17,7 @@ use fonts::DiagramFonts;
 use markview_document::Document;
 use markview_layout::{
 	fonts::FontConfig,
-	image::{ImageInfo, ImageSnapshot, ImageSource},
+	image::{ImageInfo, ImageSnapshot, ImageSource, ResourceBase},
 	style::Stylesheet,
 };
 use pixels::cache_pixels;
@@ -356,6 +356,7 @@ pub struct Images {
 	generation: u64,
 	document: PathBuf,
 	workspace: Option<PathBuf>,
+	embed_paths: Option<Arc<crate::embed::SourcePaths>>,
 	/// The exact file a synthesized one-picture document shows.
 	standalone: Option<PathBuf>,
 	revision: u64,
@@ -481,6 +482,7 @@ impl Images {
 			generation,
 			document: PathBuf::new(),
 			workspace: None,
+			embed_paths: None,
 			standalone: None,
 			revision: 0,
 			requested_image: None,
@@ -509,6 +511,13 @@ impl Images {
 	/// The open folder root through which Obsidian vault embeds resolve.
 	pub(crate) fn set_workspace(&mut self, workspace: Option<PathBuf>) {
 		self.workspace = workspace;
+	}
+
+	pub(crate) fn set_embed_paths(
+		&mut self,
+		paths: Option<Arc<crate::embed::SourcePaths>>,
+	) {
+		self.embed_paths = paths;
 	}
 
 	/// Names the exact file of a synthesized one-picture document. The path is
@@ -695,10 +704,23 @@ impl Images {
 		theme: u64,
 	) -> HashSet<Source> {
 		let mut wanted = HashSet::new();
+		let paths = self.embed_paths.clone();
+		let source_path = |source: &ImageSource| {
+			if let Some(resource) = source.resource()
+				&& let ResourceBase::Source(id) | ResourceBase::VaultSource(id) =
+					resource.base
+				&& let Some(origin) =
+					paths.as_ref().and_then(|paths| paths.get(&id))
+			{
+				origin.as_path()
+			} else {
+				path
+			}
+		};
 		let requested = self.requested_image.as_ref().and_then(|image| {
 			source::resolve(
 				image,
-				path,
+				source_path(image),
 				self.workspace.as_deref(),
 				&self.security,
 			)
@@ -708,6 +730,7 @@ impl Images {
 		// order, so the same document always defers the same images.
 		let mut remote_seen = 0usize;
 		for spec in specs {
+			let path = source_path(&spec.source);
 			let key = source::key(
 				&spec.source,
 				path,

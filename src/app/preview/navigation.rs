@@ -249,16 +249,25 @@ impl<P: super::super::SendEvent> App<P> {
 		}
 		let pending =
 			self.readers.session.pending_preview_action.take().unwrap();
-		if self.readers.session.accepted_content_id != pending.content.get() {
-			return;
-		}
+		let document = self.readers.session.document.as_ref().unwrap();
+		let source = match document.markdown_parse() {
+			Some(parse) if parse.document.content_key() == pending.content => {
+				&parse.document
+			}
+			_ if document.content_key() == pending.content => {
+				document.document()
+			}
+			_ => return,
+		};
 		match pending.action {
 			Activation::Link {
 				location,
 				target,
 				expanded,
 			} => {
-				self.apply_preview_link(location, target, expanded);
+				let mut target = target;
+				let link = location.resolve(source, &mut target);
+				self.apply_preview_link(link, target, expanded);
 			}
 			Activation::Image { source, rect } => {
 				let key = self
@@ -277,12 +286,12 @@ impl<P: super::super::SendEvent> App<P> {
 
 	fn apply_preview_link(
 		&mut self,
-		location: Location,
-		mut target: LinkTarget,
+		link: Option<LinkId>,
+		target: LinkTarget,
 		expanded: Option<bool>,
 	) {
 		let document = self.readers.session.document.as_ref().unwrap();
-		let link = location.resolve(document, &mut target);
+		let composed = document.composition().is_some();
 		let enclosing = enclosing(document, link, &target);
 		for id in enclosing {
 			std::sync::Arc::make_mut(&mut self.readers.session.details_open)
@@ -306,6 +315,10 @@ impl<P: super::super::SendEvent> App<P> {
 					.map(|(_, rect)| block.y + rect.y)
 			});
 		let Some(y) = y else {
+			// A visible link in the raw preview can be replaced by its embed.
+			if composed && matches!(target, LinkTarget::Url(_)) {
+				self.open_link_target(&target, false);
+			}
 			return;
 		};
 		self.readers.session.cancel_scroll_animation();
